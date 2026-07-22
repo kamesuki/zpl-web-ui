@@ -2,7 +2,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   font-size: 14px;
   margin: 16px;
-  max-width: 900px;
+  max-width: 980px;
 }
 
 h1 {
@@ -31,14 +31,39 @@ fieldset {
 }
 
 #fields input,
+#fields textarea,
+#label-width,
+#label-height,
+#label-density {
+  font: inherit;
+}
+
+#fields input,
 #fields textarea {
   width: min(360px, 70vw);
-  font: inherit;
 }
 
 #fields textarea {
   height: 48px;
   vertical-align: top;
+}
+
+#label-width,
+#label-height,
+#label-density {
+  width: 64px;
+  margin-right: 8px;
+}
+
+#template-editor {
+  width: 100%;
+  max-width: 100%;
+  min-height: 120px;
+  box-sizing: border-box;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 #zpl-output {
@@ -58,11 +83,19 @@ fieldset {
   margin: 0 0 8px;
 }
 
-#label-preview {
+#preview-stage {
+  position: relative;
   display: inline-block;
+  max-width: 100%;
   border: 1px solid #999;
   background: #fff;
   padding: 8px;
+  vertical-align: top;
+  user-select: none;
+}
+
+#label-preview {
+  display: block;
   max-width: 100%;
 }
 
@@ -72,11 +105,56 @@ fieldset {
   height: auto;
   image-rendering: pixelated;
   border: 1px solid #ccc;
+  pointer-events: none;
 }
 
 #label-preview p {
   margin: 0;
   color: #555;
+}
+
+#drag-layer {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  pointer-events: none;
+}
+
+.fo-handle {
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 56px;
+  min-height: 22px;
+  border: 1px dashed #c00;
+  background: rgba(255, 80, 80, 0.12);
+  color: #900;
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 2px 4px;
+  cursor: grab;
+  pointer-events: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fo-handle:active,
+.fo-handle.is-dragging {
+  cursor: grabbing;
+  background: rgba(255, 80, 80, 0.28);
+  border-style: solid;
+  z-index: 2;
+}
+
+.fo-handle.is-selected {
+  border-color: #06c;
+  color: #06c;
+  background: rgba(0, 120, 255, 0.16);
+}
+
+.fo-handle .fo-coords {
+  display: block;
+  font-family: Consolas, "Courier New", monospace;
 }
 
 #toast {
@@ -94,13 +172,17 @@ fieldset {
     visibility: visible;
   }
 
-  #label-preview {
+  #preview-stage {
     position: absolute;
     left: 0;
     top: 0;
     border: none;
     padding: 0;
     background: #fff;
+  }
+
+  #drag-layer {
+    display: none !important;
   }
 
   #label-preview img {
