@@ -1,32 +1,14 @@
 # ZP Labels
 
-Static form + right-side template editor for ZPL labels.
+Static ZPL label builder with a template file browser, field editor, and print tools.
 
-## Layout
+## Features
 
-- **Left:** template picker, label data, preview, generated ZPL, print actions
-- **Right:** sticky **Template editor** panel with Move / Align / Transform / Order tools
-
-If the live GitHub Pages site looks outdated, hard-refresh (`Ctrl/Cmd+Shift+R`) — Pages can lag a minute after merges.
-
-## Templates
-
-1. Template 1
-2. Template 2
-3. Template 3
-
-## Editor tools
-
-- Move / nudge, drag on preview
-- Align (left/center/right/top/middle/bottom)
-- Scale +, Scale −
-- Rotate 90°
-- Flip H / Flip V
-- Forward / Backward / To front / To back
-- X, Y, Size, Rotation properties
-- Multi-select with Ctrl/Cmd-click
-
-Edits sync into `^FO` / orientation / size commands and are saved in `localStorage`.
+- **Template file system** — folders + `.zpl` files, Save / Save As / Rename / Delete
+- **Field editor** — add new text input fields (`{{KEY}}`) to a template
+- **Preview editor** — drag, scale, rotate, flip, align, reorder fields
+- **Print** — Fit to page (default, good for large labels) or actual label size
+- **Send to Zebra** via Browser Print
 
 ## Run
 
@@ -36,4 +18,5 @@ python3 -m http.server 8080
 
 ## GitHub Pages
 
-Settings → Pages → Deploy from branch → `main` / `(root)`
+Settings → Pages → Deploy from branch → `main` / `(root)`  
+Hard-refresh after deploy if the site looks stale.

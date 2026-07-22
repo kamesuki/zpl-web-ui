@@ -4,22 +4,42 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZP Labels</title>
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <header class="page-header">
     <h1>ZP Labels</h1>
-    <p>Left: label data + preview. Right: template editing tools.</p>
+    <p>Left: templates, fields, preview. Right: editing tools.</p>
   </header>
 
   <div class="workspace">
     <main class="left-pane">
       <form id="label-form">
+        <fieldset class="fs-box">
+          <legend>Templates</legend>
+          <div class="fs-toolbar">
+            <button type="button" id="fs-up-btn" title="Go up">Up</button>
+            <button type="button" id="fs-new-folder-btn">New folder</button>
+            <button type="button" id="fs-new-file-btn">New template</button>
+            <button type="button" id="fs-save-btn">Save</button>
+            <button type="button" id="fs-save-as-btn">Save As</button>
+            <button type="button" id="fs-rename-btn">Rename</button>
+            <button type="button" id="fs-delete-btn">Delete</button>
+          </div>
+          <div id="fs-path" class="fs-path">Templates/</div>
+          <div id="fs-list" class="fs-list" role="listbox" aria-label="Template files"></div>
+          <p class="note">Open a .zpl file to edit. Changes save in this browser.</p>
+        </fieldset>
+
         <fieldset>
-          <legend>Template</legend>
-          <label><input type="radio" name="templateType" value="1" checked /> Template 1</label><br />
-          <label><input type="radio" name="templateType" value="2" /> Template 2</label><br />
-          <label><input type="radio" name="templateType" value="3" /> Template 3</label>
+          <legend>Field editor</legend>
+          <p class="note">Add a new text input field to the open template.</p>
+          <p class="field-editor-row">
+            <label>Key <input type="text" id="new-field-key" placeholder="CUSTOM_TEXT" /></label>
+            <label>Label <input type="text" id="new-field-label" placeholder="Custom text" /></label>
+            <button type="button" id="add-field-btn">Add text field</button>
+          </p>
+          <div id="field-meta-list" class="field-meta-list"></div>
         </fieldset>
 
         <fieldset>
@@ -36,6 +56,13 @@
           <button type="button" id="send-zebra-btn" disabled>Send to Zebra</button>
           <button type="button" id="preview-btn">Refresh preview</button>
         </p>
+
+        <fieldset>
+          <legend>Print options</legend>
+          <label><input type="radio" name="printMode" value="fit" checked /> Fit to page (best for large labels)</label><br />
+          <label><input type="radio" name="printMode" value="actual" /> Actual label size</label>
+          <p class="note">Fit to page scales the preview to the paper in the print dialog.</p>
+        </fieldset>
       </form>
 
       <h2>Preview</h2>
@@ -58,7 +85,7 @@
     <aside class="editor-panel" id="editor-panel" aria-label="Template editor">
       <div class="editor-panel-head">
         <h2>Template editor</h2>
-        <button type="button" id="reset-template-btn">Reset template</button>
+        <button type="button" id="reset-template-btn">Reset file</button>
       </div>
 
       <p class="editor-hint"><strong>Editing tools</strong> — select a field first, then click a tool.</p>
@@ -119,7 +146,7 @@
       </div>
 
       <div class="field-list-wrap">
-        <div class="tool-label">Fields</div>
+        <div class="tool-label">Layout fields</div>
         <div id="field-list" class="field-list"></div>
       </div>
 
@@ -137,6 +164,6 @@
 
   <p id="toast" hidden></p>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
