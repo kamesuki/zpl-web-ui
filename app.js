@@ -1,5 +1,5 @@
 (() => {
-  const STORAGE_KEY = "zp-labels-templates-v2";
+  const STORAGE_KEY = "zp-labels-templates-v3";
   const ORIENT = ["N", "R", "I", "B"];
 
   const DEFAULT_TEMPLATES = {

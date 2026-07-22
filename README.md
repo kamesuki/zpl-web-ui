@@ -5,7 +5,9 @@ Static form + right-side template editor for ZPL labels.
 ## Layout
 
 - **Left:** template picker, label data, preview, generated ZPL, print actions
-- **Right:** contained **Template editor** with tools and raw ZPL
+- **Right:** sticky **Template editor** panel with Move / Align / Transform / Order tools
+
+If the live GitHub Pages site looks outdated, hard-refresh (`Ctrl/Cmd+Shift+R`) — Pages can lag a minute after merges.
 
 ## Templates
 
