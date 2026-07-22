@@ -5,43 +5,45 @@
       fields: [
         { key: "PART_NUMBER", label: "Part number", required: true },
         { key: "BARCODE_VALUE", label: "Barcode value", required: true },
-        { key: "DESCRIPTION", label: "Description", full: true },
+        { key: "DESCRIPTION", label: "Description" },
         { key: "PO_NO", label: "PO number" },
         { key: "WORK_ORDER", label: "Work order / SO" },
         { key: "CUSTOMER", label: "Customer" },
         { key: "QUANTITY", label: "Quantity" },
       ],
+      // Content goes to ~Y220 and X~300 — use a short label size so preview isn't padded.
       density: 8,
-      widthIn: 2,
-      heightIn: 1,
+      widthIn: 2.5,
+      heightIn: 1.5,
     },
     "Generate DSS Stock Label": {
       zpl: "^XA ^CF0,33 ^FO20,20^FD{{PART_NUMBER}}^FS ^CF0,20 ^FO20,135^FD{{DESCRIPTION}}^FS ^BY2,2,140 ^FO20,70^BCN,40,Y,N,N^FD{{BARCODE_VALUE}}^FS ^XZ",
       fields: [
         { key: "PART_NUMBER", label: "Part number", required: true },
         { key: "BARCODE_VALUE", label: "Barcode value", required: true },
-        { key: "DESCRIPTION", label: "Description", full: true },
+        { key: "DESCRIPTION", label: "Description" },
       ],
       density: 8,
-      widthIn: 2,
-      heightIn: 1,
+      widthIn: 2.5,
+      heightIn: 1.25,
     },
     Standard: {
       zpl: "^XA ^CF0,68 ^FO40,60^FD{{PART_NUMBER}}^FS ^CF0,28 ^FO40,160^FDDESC: {{DESCRIPTION}}^FS ^BY3,2,140 ^FO56,230^BCN,140,Y,N,N^FD{{BARCODE_VALUE}}^FS ^FO30,500^FDPO: {{PO_NO}}^FS ^FO30,580^FDLOC: {{LOCATION}}^FS ^FO30,660^FDQTY: {{QUANTITY}}^FS ^FO30,740^FDWO/SO: {{WORK_ORDER}}^FS ^FO500,500^FDLOT/SN: {{LOT_SERIAL}}^FS ^FO500,580^FDCOMMENT: {{COMMENT}}^FS ^XZ",
       fields: [
         { key: "PART_NUMBER", label: "Part number", required: true },
         { key: "BARCODE_VALUE", label: "Barcode value", required: true },
-        { key: "DESCRIPTION", label: "Description", full: true },
+        { key: "DESCRIPTION", label: "Description" },
         { key: "PO_NO", label: "PO number" },
         { key: "LOCATION", label: "Location" },
         { key: "QUANTITY", label: "Quantity" },
         { key: "WORK_ORDER", label: "Work order / SO" },
         { key: "LOT_SERIAL", label: "Lot / serial" },
-        { key: "COMMENT", label: "Comment", full: true },
+        { key: "COMMENT", label: "Comment" },
       ],
+      // Content to ~Y740 and X~500+ — tall label, crop height closer to content.
       density: 8,
       widthIn: 4,
-      heightIn: 6,
+      heightIn: 4.5,
     },
   };
 
@@ -53,11 +55,12 @@
   const clearBtn = document.getElementById("clear-btn");
   const previewBtn = document.getElementById("preview-btn");
   const previewEl = document.getElementById("label-preview");
+  const previewSizeEl = document.getElementById("preview-size");
   const toastEl = document.getElementById("toast");
 
   let toastTimer = null;
   let previewTimer = null;
-  let lastPreviewZpl = "";
+  let lastPreviewKey = "";
 
   function getSelectedTemplateType() {
     const selected = form.querySelector('input[name="templateType"]:checked');
@@ -78,7 +81,6 @@
   }
 
   function sanitizeZplField(value) {
-    // Keep printable text; strip control chars and ZPL field terminators that would break output.
     return String(value ?? "")
       .replace(/[\u0000-\u001F\u007F]/g, " ")
       .replace(/\^/g, "")
@@ -98,36 +100,39 @@
     return template.zpl.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
   }
 
+  function updatePreviewSizeNote(template) {
+    previewSizeEl.textContent = `Labelary size: ${template.widthIn}" × ${template.heightIn}" @ ${template.density} dpmm`;
+  }
+
   function renderFields() {
     const template = getTemplate();
     const previous = collectValues();
 
     fieldsEl.innerHTML = template.fields
-      .map((field, index) => {
+      .map((field) => {
         const value = previous[field.key] ?? "";
         const id = `field-${field.key}`;
-        const fullClass = field.full ? " field-full" : "";
         const requiredAttr = field.required ? " required" : "";
-        const delay = Math.min(index * 0.03, 0.2);
 
         if (field.key === "DESCRIPTION" || field.key === "COMMENT") {
           return `
-            <div class="field${fullClass}" style="animation-delay:${delay}s">
-              <label for="${id}">${escapeHtml(field.label)}${field.required ? " *" : ""}</label>
-              <textarea id="${id}" name="${field.key}" data-field="${field.key}" rows="2" placeholder="${escapeHtml(field.label)}"${requiredAttr}>${escapeHtml(value)}</textarea>
-            </div>
+            <p>
+              <label for="${id}">${escapeHtml(field.label)}</label>
+              <textarea id="${id}" name="${field.key}" data-field="${field.key}"${requiredAttr}>${escapeHtml(value)}</textarea>
+            </p>
           `;
         }
 
         return `
-          <div class="field${fullClass}" style="animation-delay:${delay}s">
-            <label for="${id}">${escapeHtml(field.label)}${field.required ? " *" : ""}</label>
-            <input id="${id}" name="${field.key}" data-field="${field.key}" type="text" value="${escapeHtml(value)}" placeholder="${escapeHtml(field.label)}" autocomplete="off"${requiredAttr} />
-          </div>
+          <p>
+            <label for="${id}">${escapeHtml(field.label)}</label>
+            <input id="${id}" name="${field.key}" data-field="${field.key}" type="text" value="${escapeHtml(value)}"${requiredAttr} />
+          </p>
         `;
       })
       .join("");
 
+    updatePreviewSizeNote(template);
     updateOutput();
   }
 
@@ -141,21 +146,17 @@
 
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
-      if (zpl !== lastPreviewZpl) {
-        renderPreview(zpl, template);
-      }
-    }, 450);
+      renderPreview(zpl, template);
+    }, 400);
   }
 
-  function showToast(message, success = false) {
+  function showToast(message) {
     toastEl.hidden = false;
     toastEl.textContent = message;
-    toastEl.classList.toggle("is-success", success);
-    toastEl.classList.add("is-visible");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
-      toastEl.classList.remove("is-visible");
-    }, 2200);
+      toastEl.hidden = true;
+    }, 2000);
   }
 
   async function copyZpl() {
@@ -164,14 +165,9 @@
 
     try {
       await navigator.clipboard.writeText(text);
-      showToast("ZPL copied to clipboard", true);
+      showToast("Copied.");
     } catch {
-      const range = document.createRange();
-      range.selectNodeContents(zplCodeEl);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      showToast("Select and copy the ZPL manually");
+      showToast("Copy failed — select the ZPL text manually.");
     }
   }
 
@@ -189,23 +185,23 @@
     anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
-    showToast(`Downloaded ${filename}`, true);
+    showToast("Downloaded " + filename);
   }
 
   async function renderPreview(zpl, template) {
+    const key = `${getSelectedTemplateType()}|${template.widthIn}x${template.heightIn}|${zpl}`;
     if (!zpl.trim()) {
-      previewEl.innerHTML = `<p class="preview-placeholder">Generate ZPL to preview the label.</p>`;
-      lastPreviewZpl = "";
+      previewEl.innerHTML = "<p>Generate ZPL to preview the label.</p>";
+      lastPreviewKey = "";
       return;
     }
 
-    lastPreviewZpl = zpl;
-    previewEl.innerHTML = `<p class="preview-placeholder">Rendering preview…</p>`;
+    if (key === lastPreviewKey) return;
+    lastPreviewKey = key;
+    updatePreviewSizeNote(template);
+    previewEl.innerHTML = "<p>Loading preview…</p>";
 
-    const density = template.density;
-    const width = template.widthIn;
-    const height = template.heightIn;
-    const endpoint = `https://api.labelary.com/v1/printers/${density}dpmm/labels/${width}x${height}/0/`;
+    const endpoint = `https://api.labelary.com/v1/printers/${template.density}dpmm/labels/${template.widthIn}x${template.heightIn}/0/`;
 
     try {
       const response = await fetch(endpoint, {
@@ -225,17 +221,21 @@
       const url = URL.createObjectURL(blob);
       previewEl.innerHTML = "";
       const img = document.createElement("img");
-      img.alt = "Rendered ZP label preview";
+      img.alt = "Label preview";
       img.src = url;
+      // Keep DSS/stock previews readable without stretching tall Standard labels too wide.
+      const maxCssWidth = template.heightIn >= 3 ? 360 : 420;
+      img.style.width = `${Math.min(template.widthIn * 140, maxCssWidth)}px`;
       img.onload = () => URL.revokeObjectURL(url);
       previewEl.appendChild(img);
     } catch {
-      previewEl.innerHTML = `<p class="preview-error">Could not reach Labelary for a visual preview. Your ZPL is still ready to copy or download.</p>`;
+      previewEl.innerHTML = "<p>Preview unavailable (Labelary request failed). ZPL is still ready.</p>";
     }
   }
 
   form.addEventListener("change", (event) => {
     if (event.target.name === "templateType") {
+      lastPreviewKey = "";
       renderFields();
       return;
     }
@@ -250,28 +250,26 @@
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    lastPreviewKey = "";
     updateOutput();
-    const template = getTemplate();
-    renderPreview(zplCodeEl.textContent || "", template);
-    showToast("ZPL generated", true);
+    showToast("ZPL generated.");
   });
 
   clearBtn.addEventListener("click", () => {
     fieldsEl.querySelectorAll("[data-field]").forEach((input) => {
       input.value = "";
     });
+    lastPreviewKey = "";
     updateOutput();
-    previewEl.innerHTML = `<p class="preview-placeholder">Generate ZPL to preview the label.</p>`;
-    lastPreviewZpl = "";
-    showToast("Form cleared");
+    previewEl.innerHTML = "<p>Generate ZPL to preview the label.</p>";
+    showToast("Cleared.");
   });
 
   copyBtn.addEventListener("click", copyZpl);
   downloadBtn.addEventListener("click", downloadZpl);
   previewBtn.addEventListener("click", () => {
-    const template = getTemplate();
-    lastPreviewZpl = "";
-    renderPreview(zplCodeEl.textContent || "", template);
+    lastPreviewKey = "";
+    renderPreview(zplCodeEl.textContent || "", getTemplate());
   });
 
   renderFields();

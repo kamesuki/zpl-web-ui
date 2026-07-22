@@ -3,103 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZP Labels — ZPL Template Builder</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <title>ZP Labels</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="atmosphere" aria-hidden="true"></div>
+  <h1>ZP Labels</h1>
+  <p>Fill in the fields and generate ZPL for your label printer.</p>
 
-  <header class="site-header">
-    <div class="brand">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <div class="brand-text">
-        <p class="brand-name">ZP Labels</p>
-        <p class="brand-tag">ZPL template builder</p>
-      </div>
-    </div>
-  </header>
+  <form id="label-form">
+    <fieldset>
+      <legend>Template</legend>
+      <label><input type="radio" name="templateType" value="DSS" checked /> DSS</label><br />
+      <label><input type="radio" name="templateType" value="Generate DSS Stock Label" /> DSS Stock</label><br />
+      <label><input type="radio" name="templateType" value="Standard" /> Standard</label>
+    </fieldset>
 
-  <main class="layout">
-    <section class="panel form-panel" aria-labelledby="form-heading">
-      <div class="panel-head">
-        <h1 id="form-heading">Label data</h1>
-        <p class="panel-sub">Pick a template, fill the fields, then copy or download the ZPL.</p>
-      </div>
+    <fieldset>
+      <legend>Label data</legend>
+      <div id="fields"></div>
+    </fieldset>
 
-      <form id="label-form" novalidate>
-        <fieldset class="template-picker">
-          <legend>Template</legend>
-          <div class="template-options" role="radiogroup" aria-label="Template type">
-            <label class="template-option">
-              <input type="radio" name="templateType" value="DSS" checked />
-              <span class="option-card">
-                <span class="option-title">DSS</span>
-                <span class="option-desc">Part, barcode, PO, WO/SO, qty</span>
-              </span>
-            </label>
-            <label class="template-option">
-              <input type="radio" name="templateType" value="Generate DSS Stock Label" />
-              <span class="option-card">
-                <span class="option-title">DSS Stock</span>
-                <span class="option-desc">Part, description, barcode only</span>
-              </span>
-            </label>
-            <label class="template-option">
-              <input type="radio" name="templateType" value="Standard" />
-              <span class="option-card">
-                <span class="option-title">Standard</span>
-                <span class="option-desc">Full warehouse label fields</span>
-              </span>
-            </label>
-          </div>
-        </fieldset>
+    <p>
+      <button type="submit">Generate ZPL</button>
+      <button type="button" id="clear-btn">Clear</button>
+      <button type="button" id="copy-btn" disabled>Copy ZPL</button>
+      <button type="button" id="download-btn" disabled>Download .zpl</button>
+      <button type="button" id="preview-btn">Refresh preview</button>
+    </p>
+  </form>
 
-        <div id="fields" class="fields"></div>
+  <h2>ZPL</h2>
+  <pre id="zpl-output"><code></code></pre>
 
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" id="clear-btn">Clear</button>
-          <button type="submit" class="btn btn-primary" id="generate-btn">Generate ZPL</button>
-        </div>
-      </form>
-    </section>
+  <h2>Preview</h2>
+  <p id="preview-size" class="note"></p>
+  <div id="label-preview">
+    <p>Generate ZPL to preview the label.</p>
+  </div>
 
-    <section class="panel output-panel" aria-labelledby="output-heading">
-      <div class="panel-head panel-head-row">
-        <div>
-          <h2 id="output-heading">ZPL output</h2>
-          <p class="panel-sub">Live preview updates as you type.</p>
-        </div>
-        <div class="output-actions">
-          <button type="button" class="btn btn-ghost" id="copy-btn" disabled>Copy</button>
-          <button type="button" class="btn btn-secondary" id="download-btn" disabled>Download .zpl</button>
-        </div>
-      </div>
-
-      <pre id="zpl-output" class="zpl-output" aria-live="polite" tabindex="0"><code></code></pre>
-
-      <div class="preview-block">
-        <div class="panel-head panel-head-row">
-          <div>
-            <h3 class="preview-title">Label preview</h3>
-            <p class="panel-sub">Rendered via Labelary (requires network).</p>
-          </div>
-          <button type="button" class="btn btn-ghost" id="preview-btn">Refresh preview</button>
-        </div>
-        <div id="label-preview" class="label-preview" aria-live="polite">
-          <p class="preview-placeholder">Generate ZPL to preview the label.</p>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <p>Templates match your Apps Script DSS, DSS Stock, and Standard ZP label layouts.</p>
-  </footer>
-
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <p id="toast" hidden></p>
 
   <script src="app.js"></script>
 </body>
