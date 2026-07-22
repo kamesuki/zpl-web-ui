@@ -1,14 +1,13 @@
 # ZP Labels
 
-Static ZPL label builder with a template file browser, field editor, and print tools.
+Dense ZPL label builder: templates, fields, preview tools, and code in one screen.
 
-## Features
+## Layout
 
-- **Template file system** — folders + `.zpl` files, Save / Save As / Rename / Delete
-- **Field editor** — add new text input fields (`{{KEY}}`) to a template
-- **Preview editor** — drag, scale, rotate, flip, align, reorder fields
-- **Print** — Fit to page (default, good for large labels) or actual label size
-- **Send to Zebra** via Browser Print
+- **Top:** generate / copy / download / print (fit or actual) / Zebra
+- **Left:** template file system + field values (add/edit/remove inline)
+- **Center:** preview with move/align/scale/rotate/order tools
+- **Right:** template ZPL + generated output
 
 ## Run
 
@@ -16,7 +15,4 @@ Static ZPL label builder with a template file browser, field editor, and print t
 python3 -m http.server 8080
 ```
 
-## GitHub Pages
-
-Settings → Pages → Deploy from branch → `main` / `(root)`  
-Hard-refresh after deploy if the site looks stale.
+Hard-refresh GitHub Pages after deploy if the site looks cached.
