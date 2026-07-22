@@ -1,5 +1,6 @@
 (() => {
-  const STORAGE_KEY = "zp-labels-templates-v1";
+  const STORAGE_KEY = "zp-labels-templates-v2";
+  const ORIENT = ["N", "R", "I", "B"];
 
   const DEFAULT_TEMPLATES = {
     "1": {
@@ -42,10 +43,16 @@
 
   const form = document.getElementById("label-form");
   const fieldsEl = document.getElementById("fields");
+  const fieldListEl = document.getElementById("field-list");
   const templateEditor = document.getElementById("template-editor");
   const labelWidthInput = document.getElementById("label-width");
   const labelHeightInput = document.getElementById("label-height");
   const labelDensityInput = document.getElementById("label-density");
+  const propX = document.getElementById("prop-x");
+  const propY = document.getElementById("prop-y");
+  const propSize = document.getElementById("prop-size");
+  const propRot = document.getElementById("prop-rot");
+  const applyPropsBtn = document.getElementById("apply-props-btn");
   const zplCodeEl = document.querySelector("#zpl-output code");
   const copyBtn = document.getElementById("copy-btn");
   const downloadBtn = document.getElementById("download-btn");
@@ -59,6 +66,7 @@
   const previewSizeEl = document.getElementById("preview-size");
   const selectedFoEl = document.getElementById("selected-fo");
   const toastEl = document.getElementById("toast");
+  const toolbar = document.querySelector(".toolbar");
 
   let templates = loadTemplates();
   let toastTimer = null;
@@ -67,7 +75,7 @@
   let lastPreviewKey = "";
   let lastPreviewObjectUrl = "";
   let hasPreviewImage = false;
-  let selectedFoIndex = -1;
+  let selectedFoIndexes = [];
   let foItems = [];
   let dragState = null;
   let suppressEditorInput = false;
@@ -78,17 +86,13 @@
 
   function loadTemplates() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("zp-labels-templates-v1");
       if (!raw) return cloneDefaults();
       const parsed = JSON.parse(raw);
       const merged = cloneDefaults();
       for (const key of Object.keys(merged)) {
         if (parsed[key] && typeof parsed[key].zpl === "string") {
-          merged[key] = {
-            ...merged[key],
-            ...parsed[key],
-            name: merged[key].name,
-          };
+          merged[key] = { ...merged[key], ...parsed[key], name: merged[key].name };
         }
       }
       return merged;
@@ -101,7 +105,7 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
     } catch {
-      // ignore quota / private mode
+      // ignore
     }
   }
 
@@ -159,6 +163,13 @@
     printBtn.disabled = !hasImage;
   }
 
+  function labelDotsSize(template) {
+    return {
+      dotsW: Math.round(template.widthIn * 25.4 * template.density),
+      dotsH: Math.round(template.heightIn * 25.4 * template.density),
+    };
+  }
+
   function updateSizeInputsFromTemplate(template) {
     labelWidthInput.value = template.widthIn;
     labelHeightInput.value = template.heightIn;
@@ -185,85 +196,404 @@
     hasPreviewImage = false;
   }
 
+  function findBlockStart(text, foStart, prevEnd) {
+    const before = text.slice(prevEnd, foStart);
+    const markers = [];
+    const re = /\^(CF|BY|FW|A0|A@|A)/gi;
+    let m;
+    while ((m = re.exec(before))) markers.push(prevEnd + m.index);
+    if (!markers.length) return foStart;
+    return markers[markers.length - 1] > foStart - 80 ? markers[0] : markers[markers.length - 1];
+  }
+
   function parseFoItems(zpl) {
     const text = String(zpl);
     const items = [];
     const foRegex = /\^FO(-?\d+)\s*,\s*(-?\d+)(?:\s*,\s*(-?\d+))?/gi;
     let match;
+    let prevEnd = 0;
+    const xa = text.search(/\^XA/i);
+    if (xa >= 0) prevEnd = xa + 3;
 
     while ((match = foRegex.exec(text))) {
-      const start = match.index;
+      const foStart = match.index;
       const full = match[0];
       const xToken = match[1];
       const yToken = match[2];
-      const xStartInMatch = match[0].search(/-?\d+/);
-      const afterXComma = match[0].indexOf(",", xStartInMatch);
-      const yStartInMatch = afterXComma + 1 + match[0].slice(afterXComma + 1).search(/-?\d+/);
+      const xStartInMatch = full.search(/-?\d+/);
+      const afterXComma = full.indexOf(",", xStartInMatch);
+      const yStartInMatch = afterXComma + 1 + full.slice(afterXComma + 1).search(/-?\d+/);
 
-      const nextFo = text.slice(start + full.length).search(/\^FO/i);
-      const nextEnd = text.slice(start + full.length).search(/\^XZ/i);
-      let segmentEnd = text.length;
-      if (nextFo >= 0) segmentEnd = Math.min(segmentEnd, start + full.length + nextFo);
-      if (nextEnd >= 0) segmentEnd = Math.min(segmentEnd, start + full.length + nextEnd);
-      const segment = text.slice(start, segmentEnd);
+      const afterFo = foStart + full.length;
+      const nextFoRel = text.slice(afterFo).search(/\^FO/i);
+      const nextXzRel = text.slice(afterFo).search(/\^XZ/i);
+      let blockEnd = text.length;
+      if (nextFoRel >= 0) blockEnd = Math.min(blockEnd, afterFo + nextFoRel);
+      if (nextXzRel >= 0) blockEnd = Math.min(blockEnd, afterFo + nextXzRel);
+
+      const blockStart = findBlockStart(text, foStart, prevEnd);
+      const block = text.slice(blockStart, blockEnd);
+      const segment = text.slice(foStart, blockEnd);
       const placeholderMatch = segment.match(/\{\{(\w+)\}\}/);
       const label = placeholderMatch ? placeholderMatch[1] : `FO#${items.length + 1}`;
+
+      const cfMatch = block.match(/\^CF\d+\s*,\s*(\d+)(?:\s*,\s*(\d+))?/i);
+      const bcMatch = block.match(/\^BC([NRIB])\s*,\s*(\d+)/i);
+      const aMatch = block.match(/\^A[0-9A-Z@]*([NRIB])/i);
+      const fwMatch = block.match(/\^FW([NRIB])/i);
+      let orientation = "N";
+      let size = null;
+      if (bcMatch) {
+        orientation = bcMatch[1].toUpperCase();
+        size = Number(bcMatch[2]);
+      } else if (cfMatch) {
+        size = Number(cfMatch[1]);
+        if (aMatch) orientation = aMatch[1].toUpperCase();
+        else if (fwMatch) orientation = fwMatch[1].toUpperCase();
+      } else if (aMatch) {
+        orientation = aMatch[1].toUpperCase();
+      } else if (fwMatch) {
+        orientation = fwMatch[1].toUpperCase();
+      }
 
       items.push({
         index: items.length,
         label,
         x: Number(xToken),
         y: Number(yToken),
-        xAbsStart: start + xStartInMatch,
-        xAbsEnd: start + xStartInMatch + xToken.length,
-        yAbsStart: start + yStartInMatch,
-        yAbsEnd: start + yStartInMatch + yToken.length,
-        foStart: start,
-        foEnd: start + full.length,
+        size,
+        orientation,
+        xAbsStart: foStart + xStartInMatch,
+        xAbsEnd: foStart + xStartInMatch + xToken.length,
+        yAbsStart: foStart + yStartInMatch,
+        yAbsEnd: foStart + yStartInMatch + yToken.length,
+        foStart,
+        foEnd: foStart + full.length,
+        blockStart,
+        blockEnd,
+        block,
       });
+
+      prevEnd = blockEnd;
     }
 
     return items;
   }
 
-  function setTemplateZpl(zpl, { refreshFields = false, caret = null } = {}) {
+  function commitZpl(zpl, { refreshPreview = true, keepSelection = true } = {}) {
     const template = getTemplate();
     template.zpl = zpl;
     saveTemplates();
-
     suppressEditorInput = true;
     templateEditor.value = zpl;
-    if (caret != null) {
-      templateEditor.setSelectionRange(caret, caret);
-    }
     suppressEditorInput = false;
-
+    const oldSelectedLabels = keepSelection
+      ? selectedFoIndexes.map((i) => foItems[i]?.label).filter(Boolean)
+      : [];
     foItems = parseFoItems(zpl);
-    if (refreshFields) renderFields({ keepValues: true });
-    updateOutput({ skipPreview: false });
+    if (keepSelection && oldSelectedLabels.length) {
+      selectedFoIndexes = foItems
+        .filter((item) => oldSelectedLabels.includes(item.label))
+        .map((item) => item.index);
+    }
+    updateSelectionUi();
+    if (refreshPreview) {
+      lastPreviewKey = "";
+      updateOutput();
+    } else {
+      updateOutput({ skipPreview: true });
+      renderDragHandles();
+      renderFieldList();
+    }
   }
 
-  function highlightFoInEditor(item) {
+  function primarySelected() {
+    if (!selectedFoIndexes.length) return null;
+    return foItems[selectedFoIndexes[selectedFoIndexes.length - 1]] || null;
+  }
+
+  function updateSelectionUi() {
+    const item = primarySelected();
     if (!item) {
-      selectedFoEl.textContent = "";
-      return;
+      selectedFoEl.textContent = "No field selected.";
+      propX.value = "";
+      propY.value = "";
+      propSize.value = "";
+      propRot.value = "N";
+    } else {
+      const extra =
+        selectedFoIndexes.length > 1 ? ` (+${selectedFoIndexes.length - 1} more)` : "";
+      selectedFoEl.textContent = `Selected: ${item.label}  ^FO${item.x},${item.y}  rot=${item.orientation}${item.size != null ? `  size=${item.size}` : ""}${extra}`;
+      propX.value = item.x;
+      propY.value = item.y;
+      propSize.value = item.size != null ? item.size : "";
+      propRot.value = ORIENT.includes(item.orientation) ? item.orientation : "N";
+      templateEditor.setSelectionRange(item.xAbsStart, item.yAbsEnd);
     }
-    selectedFoEl.textContent = `Selected: ${item.label}  ^FO${item.x},${item.y}`;
-    templateEditor.focus();
-    templateEditor.setSelectionRange(item.xAbsStart, item.yAbsEnd);
+    renderFieldList();
+    renderDragHandles();
+  }
+
+  function setSelection(indexes, { additive = false } = {}) {
+    const next = indexes.map(Number).filter((i) => i >= 0 && i < foItems.length);
+    if (additive) {
+      const set = new Set(selectedFoIndexes);
+      next.forEach((i) => {
+        if (set.has(i)) set.delete(i);
+        else set.add(i);
+      });
+      selectedFoIndexes = [...set];
+    } else {
+      selectedFoIndexes = next;
+    }
+    updateSelectionUi();
   }
 
   function replaceFoCoordinates(zpl, item, newX, newY) {
     const xStr = String(Math.round(newX));
     const yStr = String(Math.round(newY));
-    // Replace from end to start so earlier offsets stay valid for this single item.
-    return (
-      zpl.slice(0, item.xAbsStart) +
-      xStr +
-      zpl.slice(item.xAbsEnd, item.yAbsStart) +
-      yStr +
-      zpl.slice(item.yAbsEnd)
-    );
+    return zpl.slice(0, item.xAbsStart) + xStr + zpl.slice(item.xAbsEnd, item.yAbsStart) + yStr + zpl.slice(item.yAbsEnd);
+  }
+
+  function rewriteBlock(zpl, item, newBlock) {
+    return zpl.slice(0, item.blockStart) + newBlock + zpl.slice(item.blockEnd);
+  }
+
+  function cycleOrient(current, steps = 1) {
+    const idx = Math.max(0, ORIENT.indexOf(String(current || "N").toUpperCase()));
+    return ORIENT[(idx + steps + ORIENT.length * 4) % ORIENT.length];
+  }
+
+  function setBlockOrientation(block, orient) {
+    let next = block;
+    if (/\^BC[NRIB]/i.test(next)) {
+      next = next.replace(/\^BC[NRIB]/i, `^BC${orient}`);
+    } else if (/\^A[0-9A-Z@]*[NRIB]/i.test(next)) {
+      next = next.replace(/(\^A[0-9A-Z@]*)[NRIB]/i, `$1${orient}`);
+    } else if (/\^FW[NRIB]/i.test(next)) {
+      next = next.replace(/\^FW[NRIB]/i, `^FW${orient}`);
+    } else {
+      next = next.replace(/\^FO/i, `^FW${orient}^FO`);
+    }
+    return next;
+  }
+
+  function scaleBlock(block, factor) {
+    let next = block;
+    let changed = false;
+    next = next.replace(/\^CF(\d+)\s*,\s*(\d+)(?:\s*,\s*(\d+))?/gi, (_, type, h, w) => {
+      changed = true;
+      const nh = Math.max(8, Math.round(Number(h) * factor));
+      if (w != null) {
+        const nw = Math.max(8, Math.round(Number(w) * factor));
+        return `^CF${type},${nh},${nw}`;
+      }
+      return `^CF${type},${nh}`;
+    });
+    next = next.replace(/\^BC([NRIB])\s*,\s*(\d+)/gi, (_, o, h) => {
+      changed = true;
+      return `^BC${o},${Math.max(10, Math.round(Number(h) * factor))}`;
+    });
+    next = next.replace(/\^BY(\d+)(?:\s*,\s*([\d.]+))?(?:\s*,\s*(\d+))?/gi, (_, w, r, h) => {
+      changed = true;
+      const width = Math.max(1, Number(w) + (factor >= 1 ? 1 : -1));
+      if (h != null) return `^BY${width},${r ?? "2"},${Math.max(10, Math.round(Number(h) * factor))}`;
+      if (r != null) return `^BY${width},${r}`;
+      return `^BY${width}`;
+    });
+    if (!changed) {
+      const size = Math.max(12, Math.round(20 * factor));
+      next = next.replace(/\^FO/i, `^CF0,${size}^FO`);
+    }
+    return next;
+  }
+
+  function setBlockSize(block, size) {
+    const n = Math.max(1, Math.round(Number(size) || 1));
+    let next = block;
+    if (/\^BC[NRIB]\s*,\s*\d+/i.test(next)) {
+      next = next.replace(/(\^BC[NRIB]\s*,\s*)\d+/i, `$1${n}`);
+    }
+    if (/\^CF\d+\s*,\s*\d+/i.test(next)) {
+      next = next.replace(/(\^CF\d+\s*,\s*)\d+/i, `$1${n}`);
+    } else if (!/\^BC/i.test(next)) {
+      next = next.replace(/\^FO/i, `^CF0,${n}^FO`);
+    }
+    return next;
+  }
+
+  function moveSelected(dx, dy) {
+    if (!selectedFoIndexes.length) {
+      showToast("Select a field first.");
+      return;
+    }
+    let zpl = getTemplate().zpl;
+    // Apply from end to start so offsets remain valid.
+    const ordered = [...selectedFoIndexes].sort((a, b) => b - a);
+    for (const index of ordered) {
+      const items = parseFoItems(zpl);
+      const item = items[index];
+      if (!item) continue;
+      zpl = replaceFoCoordinates(zpl, item, Math.max(0, item.x + dx), Math.max(0, item.y + dy));
+    }
+    commitZpl(zpl);
+  }
+
+  function alignSelected(mode) {
+    if (!selectedFoIndexes.length) {
+      showToast("Select a field first.");
+      return;
+    }
+    const template = getTemplate();
+    const { dotsW, dotsH } = labelDotsSize(template);
+    const margin = 20;
+    let zpl = template.zpl;
+    let items = parseFoItems(zpl);
+    const selected = selectedFoIndexes.map((i) => items[i]).filter(Boolean);
+    if (!selected.length) return;
+
+    let targetX = null;
+    let targetY = null;
+    if (selected.length === 1) {
+      if (mode === "left") targetX = margin;
+      if (mode === "right") targetX = Math.max(margin, dotsW - 120);
+      if (mode === "center-x") targetX = Math.round(dotsW / 2 - 40);
+      if (mode === "top") targetY = margin;
+      if (mode === "bottom") targetY = Math.max(margin, dotsH - 40);
+      if (mode === "center-y") targetY = Math.round(dotsH / 2 - 20);
+    } else {
+      const xs = selected.map((s) => s.x);
+      const ys = selected.map((s) => s.y);
+      if (mode === "left") targetX = Math.min(...xs);
+      if (mode === "right") targetX = Math.max(...xs);
+      if (mode === "center-x") targetX = Math.round(xs.reduce((a, b) => a + b, 0) / xs.length);
+      if (mode === "top") targetY = Math.min(...ys);
+      if (mode === "bottom") targetY = Math.max(...ys);
+      if (mode === "center-y") targetY = Math.round(ys.reduce((a, b) => a + b, 0) / ys.length);
+    }
+
+    const ordered = [...selectedFoIndexes].sort((a, b) => b - a);
+    for (const index of ordered) {
+      items = parseFoItems(zpl);
+      const item = items[index];
+      if (!item) continue;
+      const nx = targetX == null ? item.x : targetX;
+      const ny = targetY == null ? item.y : targetY;
+      zpl = replaceFoCoordinates(zpl, item, nx, ny);
+    }
+    commitZpl(zpl);
+    showToast(`Aligned ${mode}`);
+  }
+
+  function transformSelected(kind, payload) {
+    if (!selectedFoIndexes.length) {
+      showToast("Select a field first.");
+      return;
+    }
+    let zpl = getTemplate().zpl;
+    const ordered = [...selectedFoIndexes].sort((a, b) => b - a);
+    const template = getTemplate();
+    const { dotsW, dotsH } = labelDotsSize(template);
+
+    for (const index of ordered) {
+      const items = parseFoItems(zpl);
+      const item = items[index];
+      if (!item) continue;
+
+      if (kind === "flip") {
+        const nx = payload === "h" ? Math.max(0, dotsW - item.x - 80) : item.x;
+        const ny = payload === "v" ? Math.max(0, dotsH - item.y - 30) : item.y;
+        zpl = replaceFoCoordinates(zpl, item, nx, ny);
+        const refreshed = parseFoItems(zpl)[index];
+        if (refreshed) {
+          const block = setBlockOrientation(refreshed.block, cycleOrient(refreshed.orientation, 2));
+          zpl = rewriteBlock(zpl, refreshed, block);
+        }
+        continue;
+      }
+
+      let block = item.block;
+      if (kind === "scale") block = scaleBlock(block, Number(payload) || 1);
+      if (kind === "rotate") block = setBlockOrientation(block, cycleOrient(item.orientation, 1));
+      zpl = rewriteBlock(zpl, item, block);
+    }
+
+    commitZpl(zpl);
+    showToast(kind === "scale" ? "Scaled" : kind === "rotate" ? "Rotated" : "Flipped");
+  }
+
+  function reorderSelected(direction) {
+    if (selectedFoIndexes.length !== 1) {
+      showToast("Select one field to change order.");
+      return;
+    }
+    const index = selectedFoIndexes[0];
+    let zpl = getTemplate().zpl;
+    let items = parseFoItems(zpl);
+    if (!items[index]) return;
+
+    let targetIndex = index;
+    if (direction === "forward") targetIndex = Math.min(items.length - 1, index + 1);
+    if (direction === "backward") targetIndex = Math.max(0, index - 1);
+    if (direction === "front") targetIndex = items.length - 1;
+    if (direction === "back") targetIndex = 0;
+    if (targetIndex === index) return;
+
+    // Rebuild from blocks: extract all blocks and swap order.
+    const blocks = items.map((item) => ({
+      label: item.label,
+      text: zpl.slice(item.blockStart, item.blockEnd),
+      start: item.blockStart,
+      end: item.blockEnd,
+    }));
+
+    const moving = blocks.splice(index, 1)[0];
+    blocks.splice(targetIndex, 0, moving);
+
+    // Preserve prefix before first block and suffix after last.
+    const prefix = zpl.slice(0, items[0].blockStart);
+    const suffix = zpl.slice(items[items.length - 1].blockEnd);
+    const joined = blocks.map((b) => b.text).join("");
+    // Keep spacing between original blocks roughly by using a single space if needed.
+    zpl = prefix + joined + suffix;
+
+    commitZpl(zpl);
+    // Reselect by label
+    foItems = parseFoItems(zpl);
+    const found = foItems.find((item) => item.label === moving.label);
+    selectedFoIndexes = found ? [found.index] : [];
+    updateSelectionUi();
+    showToast(direction.includes("front") || direction === "forward" ? "Moved forward" : "Moved backward");
+  }
+
+  function applyPropsFromInputs() {
+    const item = primarySelected();
+    if (!item) {
+      showToast("Select a field first.");
+      return;
+    }
+    let zpl = getTemplate().zpl;
+    let items = parseFoItems(zpl);
+    let current = items[item.index];
+    if (!current) return;
+
+    const nx = Math.max(0, Number(propX.value));
+    const ny = Math.max(0, Number(propY.value));
+    if (Number.isFinite(nx) && Number.isFinite(ny)) {
+      zpl = replaceFoCoordinates(zpl, current, nx, ny);
+      items = parseFoItems(zpl);
+      current = items[item.index];
+    }
+
+    if (current) {
+      let block = current.block;
+      if (propSize.value !== "") block = setBlockSize(block, propSize.value);
+      block = setBlockOrientation(block, propRot.value || "N");
+      zpl = rewriteBlock(zpl, current, block);
+    }
+
+    commitZpl(zpl);
+    showToast("Properties applied.");
   }
 
   function renderFields({ keepValues = true } = {}) {
@@ -283,22 +613,20 @@
         const value = previous[key] ?? "";
         const required = key === "PART_NUMBER" || key === "BARCODE_VALUE" ? " required" : "";
         const multiline = key === "DESCRIPTION" || key === "COMMENT";
-
         if (multiline) {
-          return `
-            <p>
-              <label for="${id}">${escapeHtml(label)}</label>
-              <textarea id="${id}" name="${key}" data-field="${key}"${required}>${escapeHtml(value)}</textarea>
-            </p>
-          `;
+          return `<p><label for="${id}">${escapeHtml(label)}</label><textarea id="${id}" name="${key}" data-field="${key}"${required}>${escapeHtml(value)}</textarea></p>`;
         }
+        return `<p><label for="${id}">${escapeHtml(label)}</label><input id="${id}" name="${key}" data-field="${key}" type="text" value="${escapeHtml(value)}"${required} /></p>`;
+      })
+      .join("");
+  }
 
-        return `
-          <p>
-            <label for="${id}">${escapeHtml(label)}</label>
-            <input id="${id}" name="${key}" data-field="${key}" type="text" value="${escapeHtml(value)}"${required} />
-          </p>
-        `;
+  function renderFieldList() {
+    foItems = parseFoItems(getTemplate().zpl);
+    fieldListEl.innerHTML = foItems
+      .map((item) => {
+        const selected = selectedFoIndexes.includes(item.index) ? " is-selected" : "";
+        return `<button type="button" class="${selected}" data-fo-index="${item.index}">${escapeHtml(item.label)} — ^FO${item.x},${item.y}</button>`;
       })
       .join("");
   }
@@ -310,8 +638,8 @@
     suppressEditorInput = false;
     updateSizeInputsFromTemplate(template);
     foItems = parseFoItems(template.zpl);
-    selectedFoIndex = -1;
-    selectedFoEl.textContent = "";
+    selectedFoIndexes = [];
+    updateSelectionUi();
     renderFields({ keepValues: true });
     lastPreviewKey = "";
     updateOutput();
@@ -322,13 +650,10 @@
     const zpl = buildZpl(template.zpl, collectValues());
     zplCodeEl.textContent = zpl;
     setActionButtonsEnabled(Boolean(zpl.trim()), hasPreviewImage);
-
+    renderFieldList();
     if (skipPreview) return;
-
     clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => {
-      renderPreview(zpl, template);
-    }, 350);
+    previewTimer = setTimeout(() => renderPreview(zpl, template), 350);
   }
 
   function showToast(message) {
@@ -373,49 +698,26 @@
       showToast("Load a preview before printing.");
       return;
     }
-
     const template = getTemplate();
     updateSizeInputsFromTemplate(template);
-
     const printWindow = window.open("", "_blank", "noopener,noreferrer,width=640,height=480");
     if (!printWindow) {
       window.print();
       return;
     }
-
     const width = template.widthIn;
     const height = template.heightIn;
-    printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <title>Print label</title>
-  <style>
-    @page { margin: 0; size: ${width}in ${height}in; }
-    html, body { margin: 0; padding: 0; }
-    img { display: block; width: ${width}in; height: ${height}in; object-fit: fill; }
-  </style>
-</head>
-<body>
-  <img src="${img.src}" alt="Label" />
-</body>
-</html>`);
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>Print label</title>
+<style>@page{margin:0;size:${width}in ${height}in;}html,body{margin:0;padding:0;}img{display:block;width:${width}in;height:${height}in;object-fit:fill;}</style>
+</head><body><img src="${img.src}" alt="Label" /></body></html>`);
     printWindow.document.close();
-
     const doPrint = () => {
       printWindow.focus();
       printWindow.print();
     };
-
     const printImg = printWindow.document.querySelector("img");
-    if (printImg && !printImg.complete) {
-      printImg.onload = doPrint;
-      printImg.onerror = () => {
-        showToast("Could not load label image for printing.");
-        printWindow.close();
-      };
-    } else {
-      setTimeout(doPrint, 50);
-    }
+    if (printImg && !printImg.complete) printImg.onload = doPrint;
+    else setTimeout(doPrint, 50);
   }
 
   async function fetchJson(url) {
@@ -430,7 +732,7 @@
         await fetchJson(`${base}/available`);
         return base;
       } catch {
-        // try next
+        // next
       }
     }
     return null;
@@ -439,15 +741,11 @@
   function pickPrinter(available) {
     const list = Array.isArray(available)
       ? available
-      : available && Array.isArray(available.printer)
-        ? available.printer
-        : available && Array.isArray(available.device)
-          ? available.device
-          : [];
+      : available?.printer || available?.device || [];
     if (!list.length) return null;
     return (
-      list.find((device) => String(device.connection || "").toLowerCase() === "usb") ||
-      list.find((device) => String(device.deviceType || device.type || "").toLowerCase() === "printer") ||
+      list.find((d) => String(d.connection || "").toLowerCase() === "usb") ||
+      list.find((d) => String(d.deviceType || d.type || "").toLowerCase() === "printer") ||
       list[0]
     );
   }
@@ -455,33 +753,20 @@
   async function sendToZebra() {
     const zpl = zplCodeEl.textContent || "";
     if (!zpl.trim()) return;
-
     sendZebraBtn.disabled = true;
     showToast("Looking for Zebra Browser Print…");
-
     try {
       const base = await findBrowserPrintBase();
-      if (!base) {
-        throw new Error(
-          "Zebra Browser Print not found. Start Browser Print, then try again — or use Print label / Download .zpl."
-        );
-      }
-
+      if (!base) throw new Error("Zebra Browser Print not found.");
       const available = await fetchJson(`${base}/available`);
       const device = pickPrinter(available);
       if (!device) throw new Error("No printer found in Zebra Browser Print.");
-
       const response = await fetch(`${base}/write`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ device, data: zpl }),
       });
-
-      if (!response.ok) {
-        const detail = await response.text().catch(() => "");
-        throw new Error(detail || `Send failed (HTTP ${response.status})`);
-      }
-
+      if (!response.ok) throw new Error(`Send failed (HTTP ${response.status})`);
       showToast("Sent ZPL to " + (device.name || device.uid || "printer"));
     } catch (error) {
       showToast(error.message || "Could not send to Zebra printer.");
@@ -494,28 +779,16 @@
     const img = previewEl.querySelector("img");
     const template = getTemplate();
     if (!img || !img.naturalWidth) return null;
-
-    const displayWidth = img.clientWidth;
-    const displayHeight = img.clientHeight;
-    const dotsW = Math.round(template.widthIn * 25.4 * template.density);
-    const dotsH = Math.round(template.heightIn * 25.4 * template.density);
-
+    const { dotsW, dotsH } = labelDotsSize(template);
     return {
       img,
-      displayWidth,
-      displayHeight,
-      // Prefer Labelary natural pixels (1px ≈ 1 dot). Fall back to calculated dots.
+      displayWidth: img.clientWidth,
+      displayHeight: img.clientHeight,
       dotsW: img.naturalWidth || dotsW,
       dotsH: img.naturalHeight || dotsH,
-      scaleX: displayWidth / (img.naturalWidth || dotsW),
-      scaleY: displayHeight / (img.naturalHeight || dotsH),
+      scaleX: img.clientWidth / (img.naturalWidth || dotsW),
+      scaleY: img.clientHeight / (img.naturalHeight || dotsH),
     };
-  }
-
-  function syncDragLayerSize(metrics) {
-    dragLayer.hidden = false;
-    dragLayer.style.width = `${metrics.displayWidth}px`;
-    dragLayer.style.height = `${metrics.displayHeight}px`;
   }
 
   function renderDragHandles() {
@@ -525,21 +798,17 @@
       dragLayer.innerHTML = "";
       return;
     }
-
-    syncDragLayerSize(metrics);
+    dragLayer.hidden = false;
+    dragLayer.style.width = `${metrics.displayWidth}px`;
+    dragLayer.style.height = `${metrics.displayHeight}px`;
     foItems = parseFoItems(getTemplate().zpl);
-
     dragLayer.innerHTML = foItems
       .map((item) => {
-        const left = item.x * metrics.scaleX;
-        const top = item.y * metrics.scaleY;
-        const selected = item.index === selectedFoIndex ? " is-selected" : "";
-        return `
-          <div class="fo-handle${selected}" data-fo-index="${item.index}" style="left:${left}px;top:${top}px;" title="Drag to move ${escapeHtml(item.label)}">
-            <span>${escapeHtml(item.label)}</span>
-            <span class="fo-coords">^FO${item.x},${item.y}</span>
-          </div>
-        `;
+        const selected = selectedFoIndexes.includes(item.index) ? " is-selected" : "";
+        return `<div class="fo-handle${selected}" data-fo-index="${item.index}" style="left:${item.x * metrics.scaleX}px;top:${item.y * metrics.scaleY}px;" title="${escapeHtml(item.label)}">
+          <span>${escapeHtml(item.label)}</span>
+          <span class="fo-coords">^FO${item.x},${item.y}</span>
+        </div>`;
       })
       .join("");
   }
@@ -565,12 +834,10 @@
       setActionButtonsEnabled(false, false);
       return;
     }
-
     if (key === lastPreviewKey) {
       renderDragHandles();
       return;
     }
-
     lastPreviewKey = key;
     updateSizeInputsFromTemplate(template);
     previewEl.innerHTML = "<p>Loading preview…</p>";
@@ -578,19 +845,13 @@
     setActionButtonsEnabled(true, false);
 
     const endpoint = `https://api.labelary.com/v1/printers/${template.density}dpmm/labels/${template.widthIn}x${template.heightIn}/0/`;
-
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          Accept: "image/png",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { Accept: "image/png", "Content-Type": "application/x-www-form-urlencoded" },
         body: zpl,
       });
-
       if (!response.ok) throw new Error(`Preview failed (${response.status})`);
-
       const blob = await response.blob();
       clearPreviewObjectUrl();
       const url = URL.createObjectURL(blob);
@@ -611,7 +872,6 @@
       clearPreviewObjectUrl();
       previewEl.innerHTML = "<p>Preview unavailable (Labelary request failed). ZPL is still ready.</p>";
       dragLayer.hidden = true;
-      dragLayer.innerHTML = "";
       setActionButtonsEnabled(true, false);
     }
   }
@@ -619,18 +879,17 @@
   function onDragStart(event) {
     const handle = event.target.closest(".fo-handle");
     if (!handle) return;
-
     event.preventDefault();
     const index = Number(handle.dataset.foIndex);
+    const additive = event.ctrlKey || event.metaKey;
+    if (additive) setSelection([index], { additive: true });
+    else if (!selectedFoIndexes.includes(index)) setSelection([index]);
+
     const baseZpl = getTemplate().zpl;
     foItems = parseFoItems(baseZpl);
     const item = foItems[index];
     if (!item) return;
-
-    selectedFoIndex = index;
-    highlightFoInEditor(item);
     handle.classList.add("is-dragging", "is-selected");
-
     dragState = {
       index,
       startClientX: event.clientX,
@@ -639,6 +898,10 @@
       originY: item.y,
       itemSnapshot: item,
       baseZpl,
+      selectedSnapshot: selectedFoIndexes.map((i) => {
+        const it = foItems[i];
+        return it ? { index: i, x: it.x, y: it.y, item: it } : null;
+      }).filter(Boolean),
     };
   }
 
@@ -646,57 +909,64 @@
     if (!dragState) return;
     const metrics = getPreviewMetrics();
     if (!metrics) return;
-
     const dxDots = (event.clientX - dragState.startClientX) / metrics.scaleX;
     const dyDots = (event.clientY - dragState.startClientY) / metrics.scaleY;
-    const newX = Math.max(0, Math.round(dragState.originX + dxDots));
-    const newY = Math.max(0, Math.round(dragState.originY + dyDots));
 
-    updateHandlePosition(dragState.index, newX, newY);
-    selectedFoEl.textContent = `Selected: ${dragState.itemSnapshot.label}  ^FO${newX},${newY}`;
-
-    const liveZpl = replaceFoCoordinates(dragState.baseZpl, dragState.itemSnapshot, newX, newY);
+    let liveZpl = dragState.baseZpl;
+    const ordered = [...dragState.selectedSnapshot].sort((a, b) => b.index - a.index);
+    for (const snap of ordered) {
+      const nx = Math.max(0, Math.round(snap.x + dxDots));
+      const ny = Math.max(0, Math.round(snap.y + dyDots));
+      updateHandlePosition(snap.index, nx, ny);
+      liveZpl = replaceFoCoordinates(liveZpl, snap.item, nx, ny);
+      if (snap.index === dragState.index) {
+        selectedFoEl.textContent = `Selected: ${snap.item.label}  ^FO${nx},${ny}`;
+        propX.value = nx;
+        propY.value = ny;
+      }
+    }
 
     suppressEditorInput = true;
     templateEditor.value = liveZpl;
-    const xLen = String(newX).length;
-    const yLen = String(newY).length;
-    const xStart = dragState.itemSnapshot.xAbsStart;
-    const oldXLen = dragState.itemSnapshot.xAbsEnd - dragState.itemSnapshot.xAbsStart;
-    const yStart = dragState.itemSnapshot.yAbsStart + (xLen - oldXLen);
-    templateEditor.setSelectionRange(xStart, yStart + yLen);
     suppressEditorInput = false;
-
-    dragState.currentX = newX;
-    dragState.currentY = newY;
     dragState.liveZpl = liveZpl;
   }
 
   function onDragEnd() {
     if (!dragState) return;
-
-    const { index, currentX, currentY, liveZpl, itemSnapshot } = dragState;
+    const { liveZpl, index } = dragState;
     dragState = null;
-
     const handle = dragLayer.querySelector(`[data-fo-index="${index}"]`);
     if (handle) handle.classList.remove("is-dragging");
-
-    if (liveZpl == null || currentX == null) {
+    if (!liveZpl) {
       renderDragHandles();
       return;
     }
-
-    const template = getTemplate();
-    template.zpl = liveZpl;
-    saveTemplates();
-    foItems = parseFoItems(liveZpl);
-    selectedFoIndex = index;
-    highlightFoInEditor(foItems[index] || { ...itemSnapshot, x: currentX, y: currentY });
-
-    lastPreviewKey = "";
-    updateOutput();
-    showToast(`Moved ${itemSnapshot.label} to ^FO${currentX},${currentY}`);
+    commitZpl(liveZpl);
+    showToast("Moved field(s).");
   }
+
+  toolbar.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-tool]");
+    if (!btn) return;
+    const tool = btn.dataset.tool;
+    if (tool === "nudge") moveSelected(Number(btn.dataset.dx), Number(btn.dataset.dy));
+    if (tool === "align") alignSelected(btn.dataset.align);
+    if (tool === "scale") transformSelected("scale", btn.dataset.factor);
+    if (tool === "rotate") transformSelected("rotate");
+    if (tool === "flip") transformSelected("flip", btn.dataset.axis);
+    if (tool === "forward" || tool === "backward" || tool === "front" || tool === "back") {
+      reorderSelected(tool);
+    }
+  });
+
+  applyPropsBtn.addEventListener("click", applyPropsFromInputs);
+
+  fieldListEl.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-fo-index]");
+    if (!btn) return;
+    setSelection([Number(btn.dataset.foIndex)], { additive: event.ctrlKey || event.metaKey });
+  });
 
   form.addEventListener("change", (event) => {
     if (event.target.name === "templateType") {
@@ -707,9 +977,7 @@
   });
 
   form.addEventListener("input", (event) => {
-    if (event.target.matches("[data-field]")) {
-      updateOutput();
-    }
+    if (event.target.matches("[data-field]")) updateOutput();
   });
 
   templateEditor.addEventListener("input", () => {
@@ -718,7 +986,6 @@
     template.zpl = templateEditor.value;
     saveTemplates();
     foItems = parseFoItems(template.zpl);
-
     clearTimeout(editorPreviewTimer);
     editorPreviewTimer = setTimeout(() => {
       renderFields({ keepValues: true });
@@ -730,12 +997,8 @@
   templateEditor.addEventListener("click", () => {
     const pos = templateEditor.selectionStart;
     foItems = parseFoItems(templateEditor.value);
-    const hit = foItems.find((item) => pos >= item.foStart && pos <= item.yAbsEnd + 1);
-    if (hit) {
-      selectedFoIndex = hit.index;
-      highlightFoInEditor(hit);
-      renderDragHandles();
-    }
+    const hit = foItems.find((item) => pos >= item.blockStart && pos <= item.blockEnd);
+    if (hit) setSelection([hit.index]);
   });
 
   [labelWidthInput, labelHeightInput, labelDensityInput].forEach((input) => {

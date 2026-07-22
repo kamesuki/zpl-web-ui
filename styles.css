@@ -1,23 +1,76 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
   font-family: Arial, Helvetica, sans-serif;
   font-size: 14px;
-  margin: 16px;
-  max-width: 980px;
+  margin: 0;
+  background: #f3f3f3;
+  color: #111;
 }
 
-h1 {
+.page-header {
+  padding: 12px 16px 4px;
+  background: #fff;
+  border-bottom: 1px solid #bbb;
+}
+
+.page-header h1 {
   font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.page-header p {
   margin: 0 0 8px;
+  color: #444;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 0;
+  min-height: calc(100vh - 70px);
+  align-items: stretch;
+}
+
+.left-pane {
+  padding: 12px 16px 24px;
+  overflow: auto;
+}
+
+.editor-panel {
+  border-left: 1px solid #999;
+  background: #eaeaea;
+  padding: 10px 12px 16px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.editor-panel h2 {
+  font-size: 16px;
+  margin: 0;
 }
 
 h2 {
   font-size: 16px;
-  margin: 20px 0 8px;
+  margin: 16px 0 8px;
 }
 
 fieldset {
   margin: 0 0 12px;
   padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #999;
 }
 
 #fields p {
@@ -34,13 +87,17 @@ fieldset {
 #fields textarea,
 #label-width,
 #label-height,
-#label-density {
+#label-density,
+#prop-x,
+#prop-y,
+#prop-size,
+#prop-rot {
   font: inherit;
 }
 
 #fields input,
 #fields textarea {
-  width: min(360px, 70vw);
+  width: min(360px, 100%);
 }
 
 #fields textarea {
@@ -50,27 +107,95 @@ fieldset {
 
 #label-width,
 #label-height,
-#label-density {
+#label-density,
+#prop-x,
+#prop-y,
+#prop-size {
   width: 64px;
-  margin-right: 8px;
+  margin-right: 6px;
+}
+
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #999;
+  background: #f7f7f7;
+}
+
+.tool-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.tool-label {
+  display: inline-block;
+  min-width: 70px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #333;
+}
+
+.tool-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.props,
+.field-list-wrap,
+.size-row {
+  padding: 6px 8px;
+  border: 1px solid #999;
+  background: #f7f7f7;
+}
+
+.field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 140px;
+  overflow: auto;
+  margin-top: 4px;
+}
+
+.field-list button {
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  cursor: pointer;
+  border: 1px solid #bbb;
+  background: #fff;
+}
+
+.field-list button.is-selected {
+  border-color: #06c;
+  background: #dcecff;
 }
 
 #template-editor {
   width: 100%;
-  max-width: 100%;
-  min-height: 120px;
-  box-sizing: border-box;
+  min-height: 180px;
+  flex: 1;
   font-family: Consolas, "Courier New", monospace;
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
+  border: 1px solid #999;
+  padding: 6px;
+  background: #fff;
 }
 
 #zpl-output {
   margin: 0;
   padding: 8px;
   border: 1px solid #999;
-  background: #f7f7f7;
+  background: #fff;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: Consolas, "Courier New", monospace;
@@ -81,6 +206,13 @@ fieldset {
 .note {
   color: #444;
   margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 #preview-stage {
@@ -158,8 +290,27 @@ fieldset {
 }
 
 #toast {
-  margin-top: 12px;
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  margin: 0;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #090;
   color: #060;
+  z-index: 20;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-panel {
+    border-left: none;
+    border-top: 1px solid #999;
+    min-height: 60vh;
+  }
 }
 
 @media print {
@@ -181,7 +332,13 @@ fieldset {
     background: #fff;
   }
 
-  #drag-layer {
+  #drag-layer,
+  .editor-panel,
+  .page-header,
+  .left-pane form,
+  .left-pane h2,
+  .left-pane .note,
+  #zpl-output {
     display: none !important;
   }
 
@@ -191,9 +348,5 @@ fieldset {
     height: var(--print-height, 1.5in) !important;
     max-width: none;
     object-fit: fill;
-  }
-
-  #label-preview p {
-    display: none;
   }
 }

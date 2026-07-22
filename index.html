@@ -7,68 +7,131 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <h1>ZP Labels</h1>
-  <p>Fill in label data, edit the ZPL template, and drag fields in the preview to move them.</p>
+  <header class="page-header">
+    <h1>ZP Labels</h1>
+    <p>Fill label data on the left. Edit, move, scale, rotate, and layer fields in the template editor on the right.</p>
+  </header>
 
-  <form id="label-form">
-    <fieldset>
-      <legend>Template</legend>
-      <label><input type="radio" name="templateType" value="1" checked /> Template 1</label><br />
-      <label><input type="radio" name="templateType" value="2" /> Template 2</label><br />
-      <label><input type="radio" name="templateType" value="3" /> Template 3</label>
-      <p>
-        <button type="button" id="reset-template-btn">Reset this template</button>
-      </p>
-    </fieldset>
+  <div class="workspace">
+    <main class="left-pane">
+      <form id="label-form">
+        <fieldset>
+          <legend>Template</legend>
+          <label><input type="radio" name="templateType" value="1" checked /> Template 1</label><br />
+          <label><input type="radio" name="templateType" value="2" /> Template 2</label><br />
+          <label><input type="radio" name="templateType" value="3" /> Template 3</label>
+        </fieldset>
 
-    <fieldset>
-      <legend>Template editor</legend>
+        <fieldset>
+          <legend>Label data</legend>
+          <div id="fields"></div>
+        </fieldset>
+
+        <p class="actions">
+          <button type="submit">Generate ZPL</button>
+          <button type="button" id="clear-btn">Clear data</button>
+          <button type="button" id="copy-btn" disabled>Copy ZPL</button>
+          <button type="button" id="download-btn" disabled>Download .zpl</button>
+          <button type="button" id="print-btn" disabled>Print label</button>
+          <button type="button" id="send-zebra-btn" disabled>Send to Zebra</button>
+          <button type="button" id="preview-btn">Refresh preview</button>
+        </p>
+      </form>
+
+      <h2>Preview</h2>
+      <p id="preview-size" class="note"></p>
+      <p class="note">Drag boxes to move. Ctrl/Cmd-click to multi-select for align tools.</p>
+      <div id="preview-stage">
+        <div id="label-preview">
+          <p>Generate ZPL to preview the label.</p>
+        </div>
+        <div id="drag-layer" hidden></div>
+      </div>
+
+      <h2>Generated ZPL</h2>
+      <pre id="zpl-output"><code></code></pre>
       <p class="note">
-        Edit ^FO x,y numbers here, or drag boxes on the preview — both stay in sync.
+        Print label uses the preview image. Send to Zebra needs Browser Print running locally.
       </p>
-      <textarea id="template-editor" spellcheck="false" rows="8"></textarea>
-      <p>
+    </main>
+
+    <aside class="editor-panel" aria-label="Template editor">
+      <div class="editor-panel-head">
+        <h2>Template editor</h2>
+        <button type="button" id="reset-template-btn">Reset template</button>
+      </div>
+
+      <div class="toolbar" role="toolbar" aria-label="Field tools">
+        <div class="tool-group" aria-label="Nudge">
+          <span class="tool-label">Move</span>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10" title="Nudge up">↑</button>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0" title="Nudge left">←</button>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0" title="Nudge right">→</button>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10" title="Nudge down">↓</button>
+        </div>
+
+        <div class="tool-group" aria-label="Align">
+          <span class="tool-label">Align</span>
+          <button type="button" class="tool-btn" data-tool="align" data-align="left" title="Align left">⫷</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="center-x" title="Align center X">☰</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="right" title="Align right">⫸</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="top" title="Align top">⬆</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="center-y" title="Align middle Y">⬌</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="bottom" title="Align bottom">⬇</button>
+        </div>
+
+        <div class="tool-group" aria-label="Transform">
+          <span class="tool-label">Transform</span>
+          <button type="button" class="tool-btn" data-tool="scale" data-factor="1.15" title="Scale up">Scale +</button>
+          <button type="button" class="tool-btn" data-tool="scale" data-factor="0.87" title="Scale down">Scale −</button>
+          <button type="button" class="tool-btn" data-tool="rotate" title="Rotate 90°">Rotate</button>
+          <button type="button" class="tool-btn" data-tool="flip" data-axis="h" title="Flip horizontal">Flip H</button>
+          <button type="button" class="tool-btn" data-tool="flip" data-axis="v" title="Flip vertical">Flip V</button>
+        </div>
+
+        <div class="tool-group" aria-label="Order">
+          <span class="tool-label">Order</span>
+          <button type="button" class="tool-btn" data-tool="forward" title="Bring forward">Forward</button>
+          <button type="button" class="tool-btn" data-tool="backward" title="Send backward">Backward</button>
+          <button type="button" class="tool-btn" data-tool="front" title="Bring to front">To front</button>
+          <button type="button" class="tool-btn" data-tool="back" title="Send to back">To back</button>
+        </div>
+      </div>
+
+      <div class="props">
+        <p class="note" id="selected-fo">No field selected.</p>
+        <p>
+          <label>X <input type="number" id="prop-x" step="1" /></label>
+          <label>Y <input type="number" id="prop-y" step="1" /></label>
+          <label>Size <input type="number" id="prop-size" step="1" min="1" /></label>
+          <label>Rot
+            <select id="prop-rot">
+              <option value="N">0° (N)</option>
+              <option value="R">90° (R)</option>
+              <option value="I">180° (I)</option>
+              <option value="B">270° (B)</option>
+            </select>
+          </label>
+          <button type="button" id="apply-props-btn">Apply</button>
+        </p>
+      </div>
+
+      <div class="field-list-wrap">
+        <span class="tool-label">Fields</span>
+        <div id="field-list" class="field-list"></div>
+      </div>
+
+      <label class="tool-label" for="template-editor">Template ZPL</label>
+      <textarea id="template-editor" spellcheck="false" rows="12"></textarea>
+
+      <p class="size-row">
         Label size (inches):
         <label>W <input type="number" id="label-width" min="0.5" step="0.25" /></label>
         <label>H <input type="number" id="label-height" min="0.5" step="0.25" /></label>
         <label>dpmm <input type="number" id="label-density" min="6" max="24" step="1" /></label>
       </p>
-    </fieldset>
-
-    <fieldset>
-      <legend>Label data</legend>
-      <div id="fields"></div>
-    </fieldset>
-
-    <p>
-      <button type="submit">Generate ZPL</button>
-      <button type="button" id="clear-btn">Clear data</button>
-      <button type="button" id="copy-btn" disabled>Copy ZPL</button>
-      <button type="button" id="download-btn" disabled>Download .zpl</button>
-      <button type="button" id="print-btn" disabled>Print label</button>
-      <button type="button" id="send-zebra-btn" disabled>Send to Zebra</button>
-      <button type="button" id="preview-btn">Refresh preview</button>
-    </p>
-  </form>
-
-  <h2>Preview</h2>
-  <p id="preview-size" class="note"></p>
-  <p class="note">Drag a dashed box to move that field. Coordinates update in the template editor.</p>
-  <div id="preview-stage">
-    <div id="label-preview">
-      <p>Generate ZPL to preview the label.</p>
-    </div>
-    <div id="drag-layer" hidden></div>
+    </aside>
   </div>
-  <p id="selected-fo" class="note"></p>
-
-  <h2>Generated ZPL</h2>
-  <pre id="zpl-output"><code></code></pre>
-
-  <p class="note">
-    Print label uses the preview image (browser print dialog).
-    Send to Zebra sends raw ZPL via Zebra Browser Print (must be running on this computer).
-  </p>
 
   <p id="toast" hidden></p>
 
