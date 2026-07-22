@@ -8,14 +8,31 @@
 </head>
 <body>
   <h1>ZP Labels</h1>
-  <p>Fill in the fields and generate ZPL for your label printer.</p>
+  <p>Fill in label data, edit the ZPL template, and drag fields in the preview to move them.</p>
 
   <form id="label-form">
     <fieldset>
       <legend>Template</legend>
-      <label><input type="radio" name="templateType" value="DSS" checked /> DSS</label><br />
-      <label><input type="radio" name="templateType" value="Generate DSS Stock Label" /> DSS Stock</label><br />
-      <label><input type="radio" name="templateType" value="Standard" /> Standard</label>
+      <label><input type="radio" name="templateType" value="1" checked /> Template 1</label><br />
+      <label><input type="radio" name="templateType" value="2" /> Template 2</label><br />
+      <label><input type="radio" name="templateType" value="3" /> Template 3</label>
+      <p>
+        <button type="button" id="reset-template-btn">Reset this template</button>
+      </p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Template editor</legend>
+      <p class="note">
+        Edit ^FO x,y numbers here, or drag boxes on the preview — both stay in sync.
+      </p>
+      <textarea id="template-editor" spellcheck="false" rows="8"></textarea>
+      <p>
+        Label size (inches):
+        <label>W <input type="number" id="label-width" min="0.5" step="0.25" /></label>
+        <label>H <input type="number" id="label-height" min="0.5" step="0.25" /></label>
+        <label>dpmm <input type="number" id="label-density" min="6" max="24" step="1" /></label>
+      </p>
     </fieldset>
 
     <fieldset>
@@ -25,7 +42,7 @@
 
     <p>
       <button type="submit">Generate ZPL</button>
-      <button type="button" id="clear-btn">Clear</button>
+      <button type="button" id="clear-btn">Clear data</button>
       <button type="button" id="copy-btn" disabled>Copy ZPL</button>
       <button type="button" id="download-btn" disabled>Download .zpl</button>
       <button type="button" id="print-btn" disabled>Print label</button>
@@ -34,14 +51,20 @@
     </p>
   </form>
 
-  <h2>ZPL</h2>
-  <pre id="zpl-output"><code></code></pre>
-
   <h2>Preview</h2>
   <p id="preview-size" class="note"></p>
-  <div id="label-preview">
-    <p>Generate ZPL to preview the label.</p>
+  <p class="note">Drag a dashed box to move that field. Coordinates update in the template editor.</p>
+  <div id="preview-stage">
+    <div id="label-preview">
+      <p>Generate ZPL to preview the label.</p>
+    </div>
+    <div id="drag-layer" hidden></div>
   </div>
+  <p id="selected-fo" class="note"></p>
+
+  <h2>Generated ZPL</h2>
+  <pre id="zpl-output"><code></code></pre>
+
   <p class="note">
     Print label uses the preview image (browser print dialog).
     Send to Zebra sends raw ZPL via Zebra Browser Print (must be running on this computer).
