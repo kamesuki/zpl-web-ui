@@ -83,19 +83,128 @@
   const newFieldLabelInput = document.getElementById("new-field-label");
   const openFileNameEl = document.getElementById("open-file-name");
   const printModeSelect = document.getElementById("print-mode");
+  const printCopiesInput = document.getElementById("print-copies");
+  const undoBtn = document.getElementById("undo-btn");
+  const redoBtn = document.getElementById("redo-btn");
+  const dirtyFlagEl = document.getElementById("dirty-flag");
+  const saveStatusEl = document.getElementById("save-status");
+  const statusBarEl = document.getElementById("status-bar");
+  const previewStatusEl = document.getElementById("preview-status");
+  const exportBtn = document.getElementById("export-btn");
+  const importBtn = document.getElementById("import-btn");
+  const importFileInput = document.getElementById("import-file");
+  const helpBtn = document.getElementById("help-btn");
+  const clampBtn = document.getElementById("clamp-btn");
+  const normalizeZplBtn = document.getElementById("normalize-zpl-btn");
+  const copyOutputBtn = document.getElementById("copy-output-btn");
+  const fsDuplicateBtn = document.getElementById("fs-duplicate-btn");
+  const PREFS_KEY = "zp-labels-prefs-v1";
 
   let store = loadStore();
   let toastTimer = null;
   let previewTimer = null;
   let editorPreviewTimer = null;
+  let autosaveTimer = null;
   let lastPreviewKey = "";
   let lastPreviewObjectUrl = "";
+  let lastPreviewBlob = null;
   let hasPreviewImage = false;
+  let previewLoading = false;
   let selectedFoIndexes = [];
   let foItems = [];
   let dragState = null;
   let suppressEditorInput = false;
   let selectedFsId = store.openFileId;
+  let dirty = false;
+  let undoStack = [];
+  let redoStack = [];
+  let applyingHistory = false;
+  let previewAbort = null;
+  let previewSeq = 0;
+  let lastSavedAt = null;
+  let prefs = loadPrefs();
+
+  function loadPrefs() {
+    try {
+      return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function savePrefs() {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      // ignore
+    }
+  }
+
+  function setStatus(message) {
+    if (statusBarEl) statusBarEl.textContent = message || "";
+  }
+
+  function setDirty(next) {
+    dirty = Boolean(next);
+    if (dirtyFlagEl) dirtyFlagEl.hidden = !dirty;
+    if (saveStatusEl) {
+      saveStatusEl.textContent = dirty
+        ? "Unsaved"
+        : lastSavedAt
+          ? `Saved ${new Date(lastSavedAt).toLocaleTimeString()}`
+          : "";
+    }
+  }
+
+  function pushHistory(zpl) {
+    if (applyingHistory) return;
+    const current = undoStack[undoStack.length - 1];
+    if (current === zpl) return;
+    undoStack.push(zpl);
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack = [];
+    updateHistoryButtons();
+  }
+
+  function updateHistoryButtons() {
+    if (undoBtn) undoBtn.disabled = undoStack.length < 2;
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+  }
+
+  function applyHistoryZpl(zpl) {
+    applyingHistory = true;
+    const template = getTemplate();
+    template.zpl = zpl;
+    suppressEditorInput = true;
+    templateEditor.value = zpl;
+    suppressEditorInput = false;
+    saveStore();
+    foItems = parseFoItems(zpl);
+    selectedFoIndexes = selectedFoIndexes.filter((i) => i < foItems.length);
+    updateSelectionUi();
+    renderFields({ keepValues: true });
+    lastPreviewKey = "";
+    updateOutput();
+    setDirty(true);
+    applyingHistory = false;
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    if (undoStack.length < 2) return showToast("Nothing to undo.");
+    const current = undoStack.pop();
+    redoStack.push(current);
+    applyHistoryZpl(undoStack[undoStack.length - 1]);
+    showToast("Undo");
+  }
+
+  function redo() {
+    if (!redoStack.length) return showToast("Nothing to redo.");
+    const zpl = redoStack.pop();
+    undoStack.push(zpl);
+    applyHistoryZpl(zpl);
+    showToast("Redo");
+  }
 
   function uid(prefix) {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -200,9 +309,36 @@
   function sanitizeZplField(value) {
     return String(value ?? "")
       .replace(/[\u0000-\u001F\u007F]/g, " ")
+      .replace(/[\u0080-\u009F]/g, " ")
       .replace(/\^/g, "")
       .replace(/~/g, "")
+      .replace(/\u00A0/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function normalizeTemplateZpl(zpl) {
+    let text = String(zpl || "").trim();
+    if (!text) text = "^XA^FO20,20^FD{{PART_NUMBER}}^FS^XZ";
+    if (!/\^XA/i.test(text)) text = "^XA " + text;
+    if (!/\^XZ/i.test(text)) text = text + " ^XZ";
+    text = text.replace(/\^XA\s*\^XA/gi, "^XA");
+    text = text.replace(/\^XZ\s*\^XZ/gi, "^XZ");
+    return text.replace(/[ \t]{2,}/g, " ").trim();
+  }
+
+  function labelBounds(template) {
+    const { dotsW, dotsH } = labelDotsSize(template);
+    return { minX: 0, minY: 0, maxX: Math.max(20, dotsW - 1), maxY: Math.max(20, dotsH - 1), dotsW, dotsH };
+  }
+
+  function clampItemToLabel(item, template) {
+    const b = labelBounds(template);
+    const w = Math.min(item.boxW || 40, b.dotsW);
+    const h = Math.min(item.boxH || 20, b.dotsH);
+    const x = Math.min(Math.max(0, item.x), Math.max(0, b.dotsW - w));
+    const y = Math.min(Math.max(0, item.y), Math.max(0, b.dotsH - h));
+    return { x, y, w, h };
   }
 
   function normalizeFieldKey(raw) {
@@ -232,14 +368,16 @@
   }
 
   function buildZpl(templateZpl, values) {
-    return templateZpl.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
+    return normalizeTemplateZpl(templateZpl).replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
   }
 
   function setActionButtonsEnabled(hasZpl, hasImage) {
     copyBtn.disabled = !hasZpl;
     downloadBtn.disabled = !hasZpl;
-    sendZebraBtn.disabled = !hasZpl;
-    printBtn.disabled = !hasImage;
+    sendZebraBtn.disabled = !hasZpl || previewLoading;
+    printBtn.disabled = !hasImage || previewLoading;
+    if (copyOutputBtn) copyOutputBtn.disabled = !hasZpl;
+    printBtn.title = `Print label (${getPrintMode() === "fit" ? "fit to page" : "actual size"}) — Ctrl+P`;
   }
 
   function labelDotsSize(template) {
@@ -260,11 +398,24 @@
 
   function applySizeInputsToTemplate() {
     const template = getTemplate();
-    template.widthIn = Math.max(0.5, Number(labelWidthInput.value) || template.widthIn);
-    template.heightIn = Math.max(0.5, Number(labelHeightInput.value) || template.heightIn);
-    template.density = Math.max(6, Number(labelDensityInput.value) || template.density);
+    let widthIn = Number(labelWidthInput.value);
+    let heightIn = Number(labelHeightInput.value);
+    let density = Number(labelDensityInput.value);
+    if (!Number.isFinite(widthIn) || widthIn < 0.5) widthIn = template.widthIn;
+    if (!Number.isFinite(heightIn) || heightIn < 0.5) heightIn = template.heightIn;
+    if (!Number.isFinite(density) || density < 6) density = template.density;
+    widthIn = Math.min(20, Math.max(0.5, widthIn));
+    heightIn = Math.min(20, Math.max(0.5, heightIn));
+    density = Math.min(24, Math.max(6, Math.round(density)));
+    if (widthIn !== Number(labelWidthInput.value) || heightIn !== Number(labelHeightInput.value) || density !== Number(labelDensityInput.value)) {
+      showToast("Label size clamped to valid range.");
+    }
+    template.widthIn = widthIn;
+    template.heightIn = heightIn;
+    template.density = density;
     updateSizeInputsFromTemplate(template);
     saveStore();
+    setDirty(true);
   }
 
   function clearPreviewObjectUrl() {
@@ -272,7 +423,42 @@
       URL.revokeObjectURL(lastPreviewObjectUrl);
       lastPreviewObjectUrl = "";
     }
+    lastPreviewBlob = null;
     hasPreviewImage = false;
+  }
+
+  function commitZpl(zpl, { refreshPreview = true, keepSelection = true, recordHistory = true } = {}) {
+    const template = getTemplate();
+    const nextZpl = String(zpl);
+    if (recordHistory && !undoStack.length) undoStack.push(template.zpl);
+    template.zpl = nextZpl;
+    if (recordHistory) pushHistory(nextZpl);
+    saveStore();
+    setDirty(true);
+    suppressEditorInput = true;
+    templateEditor.value = nextZpl;
+    suppressEditorInput = false;
+    const oldSelectedLabels = keepSelection
+      ? selectedFoIndexes.map((i) => foItems[i]?.label).filter(Boolean)
+      : [];
+    foItems = parseFoItems(nextZpl);
+    if (keepSelection && oldSelectedLabels.length) {
+      selectedFoIndexes = foItems.filter((item) => oldSelectedLabels.includes(item.label)).map((item) => item.index);
+    } else if (!keepSelection) {
+      selectedFoIndexes = [];
+    } else {
+      selectedFoIndexes = selectedFoIndexes.filter((i) => i < foItems.length);
+    }
+    updateSelectionUi();
+    renderFields({ keepValues: true });
+    if (refreshPreview) {
+      lastPreviewKey = "";
+      updateOutput();
+    } else {
+      updateOutput({ skipPreview: true });
+      renderDragHandles();
+      renderFieldList();
+    }
   }
 
   function pathForFolder(folderId) {
@@ -398,9 +584,12 @@
       showToast("No template file open.");
       return;
     }
-    file.zpl = templateEditor.value;
+    file.zpl = normalizeTemplateZpl(templateEditor.value);
     applySizeInputsToTemplate();
     saveStore();
+    lastSavedAt = Date.now();
+    setDirty(false);
+    updateOpenFileLabel();
     showToast("Saved " + file.name);
   }
 
@@ -660,34 +849,6 @@
       prevEnd = blockEnd;
     }
     return items;
-  }
-
-  function commitZpl(zpl, { refreshPreview = true, keepSelection = true } = {}) {
-    const template = getTemplate();
-    template.zpl = zpl;
-    saveStore();
-    suppressEditorInput = true;
-    templateEditor.value = zpl;
-    suppressEditorInput = false;
-    const oldSelectedLabels = keepSelection
-      ? selectedFoIndexes.map((i) => foItems[i]?.label).filter(Boolean)
-      : [];
-    foItems = parseFoItems(zpl);
-    if (keepSelection && oldSelectedLabels.length) {
-      selectedFoIndexes = foItems.filter((item) => oldSelectedLabels.includes(item.label)).map((item) => item.index);
-    } else {
-      selectedFoIndexes = [];
-    }
-    updateSelectionUi();
-    renderFields({ keepValues: true });
-    if (refreshPreview) {
-      lastPreviewKey = "";
-      updateOutput();
-    } else {
-      updateOutput({ skipPreview: true });
-      renderDragHandles();
-      renderFieldList();
-    }
   }
 
   function primarySelected() {
@@ -1008,6 +1169,10 @@
     selectedFoIndexes = [];
     updateSelectionUi();
     renderFields({ keepValues: true });
+    undoStack = [template.zpl];
+    redoStack = [];
+    updateHistoryButtons();
+    setDirty(false);
     lastPreviewKey = "";
     updateOutput();
   }
@@ -1023,63 +1188,116 @@
     previewTimer = setTimeout(() => renderPreview(zpl, template), 350);
   }
 
-  function showToast(message) {
+  function showToast(message, ms = 2500) {
     toastEl.hidden = false;
     toastEl.textContent = message;
+    setStatus(message);
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastEl.hidden = true;
-    }, 2500);
+    }, ms);
   }
 
   async function copyZpl() {
-    const text = zplCodeEl.textContent || "";
+    const text = (zplCodeEl.textContent || "").trim();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      showToast("Copied.");
+      showToast("Copied generated ZPL.");
     } catch {
-      showToast("Copy failed — select the ZPL text manually.");
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(zplCodeEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        showToast("Select failed clipboard — ZPL text selected.");
+      } catch {
+        showToast("Copy failed — select the ZPL text manually.");
+      }
     }
   }
 
   function downloadZpl() {
-    const text = zplCodeEl.textContent || "";
+    const text = normalizeTemplateZpl(zplCodeEl.textContent || "");
     if (!text) return;
     const file = getOpenFile();
-    const filename = (file?.name || "label.zpl").replace(/[^a-zA-Z0-9._-]/g, "_");
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const part = sanitizeZplField(collectValues().PART_NUMBER);
+    const base = (file?.name || "label.zpl").replace(/\.zpl$/i, "");
+    const filename = `${base}${part ? "-" + part : ""}.zpl`.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const blob = new Blob([text + "\n"], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = filename;
+    document.body.appendChild(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast("Downloaded " + filename);
   }
 
   function getPrintMode() {
-    return printModeSelect?.value || "fit";
+    return printModeSelect?.value || prefs.printMode || "fit";
   }
 
-  function printLabel() {
-    const img = previewEl.querySelector("img");
-    if (!img) return showToast("Load a preview before printing.");
+  function getPrintCopies() {
+    const n = Number(printCopiesInput?.value || 1);
+    return Number.isFinite(n) ? Math.min(99, Math.max(1, Math.round(n))) : 1;
+  }
+
+  async function fetchPreviewBlob(zpl, template) {
+    const endpoint = `https://api.labelary.com/v1/printers/${template.density}dpmm/labels/${template.widthIn}x${template.heightIn}/0/`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { Accept: "image/png", "Content-Type": "application/x-www-form-urlencoded" },
+        body: zpl,
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+      return await response.blob();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function printLabel() {
     const template = getTemplate();
-    updateSizeInputsFromTemplate(template);
     const mode = getPrintMode();
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
-    if (!printWindow) {
-      window.print();
+    const copies = getPrintCopies();
+    prefs.printMode = mode;
+    prefs.printCopies = copies;
+    savePrefs();
+
+    printBtn.disabled = true;
+    showToast("Preparing print…");
+    setStatus("Preparing print image…");
+
+    let blob = lastPreviewBlob;
+    try {
+      // Always refresh a print-specific image so revoked object URLs cannot break printing.
+      const zpl = normalizeTemplateZpl(buildZpl(getTemplate().zpl, collectValues()));
+      if (!zpl) throw new Error("No ZPL to print.");
+      blob = await fetchPreviewBlob(zpl, template);
+    } catch (error) {
+      printBtn.disabled = !hasPreviewImage;
+      showToast(error.name === "AbortError" ? "Print preview timed out." : "Could not render label for print.");
       return;
     }
 
+    const objectUrl = URL.createObjectURL(blob);
     const width = template.widthIn;
     const height = template.heightIn;
+    const landscape = width >= height;
     const fitCss = `
-      @page { margin: 0.4in; }
+      @page { margin: 0.35in; size: auto ${landscape ? "landscape" : "portrait"}; }
       html, body { margin: 0; padding: 0; height: 100%; }
       body { display: flex; align-items: center; justify-content: center; }
+      .sheet { page-break-after: always; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 90vh; }
+      .sheet:last-child { page-break-after: auto; }
       img {
         display: block;
         max-width: 100%;
@@ -1093,21 +1311,67 @@
     const actualCss = `
       @page { margin: 0; size: ${width}in ${height}in; }
       html, body { margin: 0; padding: 0; }
+      .sheet { page-break-after: always; }
+      .sheet:last-child { page-break-after: auto; }
       img { display: block; width: ${width}in; height: ${height}in; object-fit: fill; }
     `;
 
+    const sheets = Array.from({ length: copies }, () => `<div class="sheet"><img src="${objectUrl}" alt="Label" /></div>`).join("");
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+    if (!printWindow) {
+      URL.revokeObjectURL(objectUrl);
+      showToast("Popup blocked — allow popups to print, or use Download.");
+      printBtn.disabled = !hasPreviewImage;
+      return;
+    }
+
+    printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html><html><head><title>Print label</title>
+<meta charset="utf-8" />
 <style>${mode === "actual" ? actualCss : fitCss}</style>
-</head><body><img src="${img.src}" alt="Label" /></body></html>`);
+</head><body>${sheets}</body></html>`);
     printWindow.document.close();
-    const doPrint = () => {
+
+    const imgs = [...printWindow.document.images];
+    const waitForImages = Promise.all(
+      imgs.map(
+        (img) =>
+          img.decode?.().catch(() => {}) ||
+          new Promise((resolve) => {
+            if (img.complete) resolve();
+            else {
+              img.onload = resolve;
+              img.onerror = resolve;
+            }
+          })
+      )
+    );
+
+    try {
+      await waitForImages;
       printWindow.focus();
       printWindow.print();
-    };
-    const printImg = printWindow.document.querySelector("img");
-    if (printImg && !printImg.complete) printImg.onload = doPrint;
-    else setTimeout(doPrint, 50);
-    showToast(mode === "fit" ? "Printing fit to page…" : "Printing actual size…");
+      const cleanup = () => {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          // ignore
+        }
+        try {
+          printWindow.close();
+        } catch {
+          // ignore
+        }
+      };
+      if ("onafterprint" in printWindow) printWindow.onafterprint = cleanup;
+      else setTimeout(cleanup, 1500);
+      showToast(mode === "fit" ? `Print dialog (fit, ${copies}x)` : `Print dialog (actual, ${copies}x)`);
+    } catch {
+      URL.revokeObjectURL(objectUrl);
+      showToast("Print failed.");
+    } finally {
+      setActionButtonsEnabled(Boolean((zplCodeEl.textContent || "").trim()), hasPreviewImage);
+    }
   }
 
   async function fetchJson(url) {
@@ -1139,10 +1403,12 @@
   }
 
   async function sendToZebra() {
-    const zpl = zplCodeEl.textContent || "";
+    const zpl = normalizeTemplateZpl(zplCodeEl.textContent || "");
     if (!zpl.trim()) return;
     sendZebraBtn.disabled = true;
     showToast("Looking for Zebra Browser Print…");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const base = await findBrowserPrintBase();
       if (!base) throw new Error("Zebra Browser Print not found.");
@@ -1153,12 +1419,18 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ device, data: zpl }),
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error(`Send failed (HTTP ${response.status})`);
       showToast("Sent ZPL to " + (device.name || device.uid || "printer"));
     } catch (error) {
-      showToast(error.message || "Could not send to Zebra printer.");
+      showToast(
+        error.name === "AbortError"
+          ? "Zebra request timed out."
+          : error.message || "Could not send to Zebra printer."
+      );
     } finally {
+      clearTimeout(timer);
       setActionButtonsEnabled(Boolean((zplCodeEl.textContent || "").trim()), hasPreviewImage);
     }
   }
@@ -1235,52 +1507,88 @@
   async function renderPreview(zpl, template) {
     const key = `${store.openFileId}|${template.widthIn}x${template.heightIn}|${template.density}|${zpl}`;
     if (!zpl.trim()) {
+      if (previewAbort) previewAbort.abort();
       clearPreviewObjectUrl();
       previewEl.innerHTML = "<p>Generate ZPL to preview the label.</p>";
       dragLayer.hidden = true;
       dragLayer.innerHTML = "";
       lastPreviewKey = "";
+      previewLoading = false;
+      if (previewStatusEl) previewStatusEl.textContent = "";
       setActionButtonsEnabled(false, false);
       return;
     }
-    if (key === lastPreviewKey) {
+    if (key === lastPreviewKey && hasPreviewImage) {
       renderDragHandles();
       return;
     }
+
+    const seq = ++previewSeq;
+    if (previewAbort) previewAbort.abort();
+    previewAbort = new AbortController();
     lastPreviewKey = key;
+    previewLoading = true;
     updateSizeInputsFromTemplate(template);
     previewEl.innerHTML = "<p>Loading preview…</p>";
+    if (previewStatusEl) previewStatusEl.textContent = "Loading…";
     dragLayer.hidden = true;
-    setActionButtonsEnabled(true, false);
+    setActionButtonsEnabled(Boolean(zpl.trim()), false);
+
     const endpoint = `https://api.labelary.com/v1/printers/${template.density}dpmm/labels/${template.widthIn}x${template.heightIn}/0/`;
+    const timer = setTimeout(() => previewAbort.abort(), 20000);
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { Accept: "image/png", "Content-Type": "application/x-www-form-urlencoded" },
         body: zpl,
+        signal: previewAbort.signal,
       });
       if (!response.ok) throw new Error(`Preview failed (${response.status})`);
       const blob = await response.blob();
+      if (seq !== previewSeq) return;
       clearPreviewObjectUrl();
+      lastPreviewBlob = blob;
       const url = URL.createObjectURL(blob);
       lastPreviewObjectUrl = url;
       previewEl.innerHTML = "";
       const img = document.createElement("img");
       img.alt = "Label preview";
+      img.decoding = "async";
       img.src = url;
       const maxCssWidth = template.heightIn >= 3 ? 360 : 420;
       img.style.width = `${Math.min(template.widthIn * 140, maxCssWidth)}px`;
       img.onload = () => {
+        if (seq !== previewSeq) return;
         hasPreviewImage = true;
+        previewLoading = false;
+        if (previewStatusEl) previewStatusEl.textContent = "Ready";
         setActionButtonsEnabled(true, true);
         renderDragHandles();
       };
+      img.onerror = () => {
+        if (seq !== previewSeq) return;
+        previewLoading = false;
+        if (previewStatusEl) previewStatusEl.textContent = "Image error";
+        showToast("Preview image failed to load.");
+        setActionButtonsEnabled(true, false);
+      };
       previewEl.appendChild(img);
-    } catch {
+    } catch (error) {
+      if (error.name === "AbortError") {
+        if (seq === previewSeq && previewStatusEl) previewStatusEl.textContent = "Cancelled";
+        return;
+      }
+      if (seq !== previewSeq) return;
       clearPreviewObjectUrl();
-      previewEl.innerHTML = "<p>Preview unavailable (Labelary request failed). ZPL is still ready.</p>";
+      previewLoading = false;
+      previewEl.innerHTML =
+        "<p>Preview unavailable (Labelary request failed). ZPL is still ready. Click Refresh to retry.</p>";
+      if (previewStatusEl) previewStatusEl.textContent = "Failed";
       dragLayer.hidden = true;
       setActionButtonsEnabled(true, false);
+      setStatus("Preview failed — check network / label size.");
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -1289,6 +1597,11 @@
     const handle = event.target.closest(".fo-handle");
     if (!handle) return;
     event.preventDefault();
+    try {
+      handle.setPointerCapture?.(event.pointerId);
+    } catch {
+      // ignore
+    }
     const index = Number(handle.dataset.foIndex);
     const additive = event.ctrlKey || event.metaKey;
     if (additive) setSelection([index], { additive: true });
@@ -1304,6 +1617,7 @@
         mode: "resize",
         resize: resizeEl.dataset.resize,
         index,
+        pointerId: event.pointerId,
         startClientX: event.clientX,
         startClientY: event.clientY,
         originW: item.boxW,
@@ -1318,6 +1632,7 @@
     dragState = {
       mode: "move",
       index,
+      pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
       baseZpl,
@@ -1446,6 +1761,88 @@
     if (btn.dataset.fieldAction === "rename") renameFieldLabel(btn.dataset.key);
   });
 
+  function duplicateSelectedField() {
+    if (selectedFoIndexes.length !== 1) return showToast("Select one field to duplicate.");
+    const item = foItems[selectedFoIndexes[0]];
+    if (!item) return;
+    let zpl = getTemplate().zpl;
+    const clone = item.block.replace(/\^FO(-?\d+)\s*,\s*(-?\d+)/i, (_, x, y) => `^FO${Number(x) + 20},${Number(y) + 20}`);
+    zpl = zpl.slice(0, item.blockEnd) + clone + zpl.slice(item.blockEnd);
+    commitZpl(zpl);
+    showToast("Duplicated field.");
+  }
+
+  function clampSelectedFields() {
+    if (!selectedFoIndexes.length) return showToast("Select a field first.");
+    const template = getTemplate();
+    let zpl = template.zpl;
+    for (const index of [...selectedFoIndexes].sort((a, b) => b - a)) {
+      const items = parseFoItems(zpl);
+      const item = items[index];
+      if (!item) continue;
+      const clamped = clampItemToLabel(item, template);
+      zpl = replaceFoCoordinates(zpl, item, clamped.x, clamped.y);
+      const refreshed = parseFoItems(zpl)[index];
+      if (refreshed) {
+        const block = applyBoxSizeToBlock(refreshed, clamped.w, clamped.h);
+        zpl = rewriteBlock(zpl, refreshed, block);
+      }
+    }
+    commitZpl(zpl);
+    showToast("Clamped inside label.");
+  }
+
+  function exportTemplates() {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      store,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "zp-labels-templates.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Exported templates JSON.");
+  }
+
+  function importTemplatesFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result || ""));
+        const next = parsed.store || parsed;
+        if (!next.nodes || !next.nodes[ROOT_ID]) throw new Error("Invalid template file.");
+        if (!confirm("Replace all local templates with imported file?")) return;
+        store = next;
+        saveStore();
+        selectedFsId = store.openFileId;
+        renderFileSystem();
+        loadSelectedTemplateIntoUi();
+        showToast("Imported templates.");
+      } catch (error) {
+        showToast(error.message || "Import failed.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      if (!dirty) return;
+      const file = getOpenFile();
+      if (!file) return;
+      file.zpl = templateEditor.value;
+      saveStore();
+      lastSavedAt = Date.now();
+      setDirty(false);
+      if (saveStatusEl) saveStatusEl.textContent = `Autosaved ${new Date(lastSavedAt).toLocaleTimeString()}`;
+    }, 5000);
+  }
+
   toolbar.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-tool]");
     if (!btn) return;
@@ -1456,9 +1853,52 @@
     if (tool === "rotate") transformSelected("rotate");
     if (tool === "flip") transformSelected("flip", btn.dataset.axis);
     if (tool === "forward" || tool === "backward" || tool === "front" || tool === "back") reorderSelected(tool);
+    if (tool === "duplicate-field") duplicateSelectedField();
   });
 
   applyPropsBtn.addEventListener("click", applyPropsFromInputs);
+  if (clampBtn) clampBtn.addEventListener("click", clampSelectedFields);
+  if (normalizeZplBtn) {
+    normalizeZplBtn.addEventListener("click", () => {
+      const fixed = normalizeTemplateZpl(templateEditor.value);
+      commitZpl(fixed);
+      showToast("Normalized ^XA/^XZ.");
+    });
+  }
+  if (copyOutputBtn) copyOutputBtn.addEventListener("click", copyZpl);
+  if (undoBtn) undoBtn.addEventListener("click", undo);
+  if (redoBtn) redoBtn.addEventListener("click", redo);
+  if (exportBtn) exportBtn.addEventListener("click", exportTemplates);
+  if (importBtn) importBtn.addEventListener("click", () => importFileInput.click());
+  if (importFileInput) {
+    importFileInput.addEventListener("change", () => {
+      const file = importFileInput.files?.[0];
+      if (file) importTemplatesFile(file);
+      importFileInput.value = "";
+    });
+  }
+  if (helpBtn) {
+    helpBtn.addEventListener("click", () => {
+      showToast(
+        "Ctrl+S save · Ctrl+P print · Ctrl+Z/Y undo/redo · Arrows nudge · Shift+Arrows jump · Esc clear · F2 rename · Enter add field",
+        6000
+      );
+    });
+  }
+  if (fsDuplicateBtn) {
+    fsDuplicateBtn.addEventListener("click", () => {
+      const file = getOpenFile();
+      if (!file) return showToast("Open a template first.");
+      createFile({
+        name: file.name.replace(/\.zpl$/i, "") + " copy.zpl",
+        zpl: file.zpl,
+        widthIn: file.widthIn,
+        heightIn: file.heightIn,
+        density: file.density,
+        fieldLabels: { ...(file.fieldLabels || {}) },
+      });
+    });
+  }
 
   fieldListEl.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-fo-index]");
@@ -1467,7 +1907,11 @@
   });
 
   form.addEventListener("input", (event) => {
-    if (event.target.matches("[data-field]")) updateOutput();
+    if (event.target.matches("[data-field]")) {
+      updateOutput();
+      setDirty(true);
+      scheduleAutosave();
+    }
   });
 
   templateEditor.addEventListener("input", () => {
@@ -1475,9 +1919,12 @@
     const template = getTemplate();
     template.zpl = templateEditor.value;
     saveStore();
+    setDirty(true);
+    scheduleAutosave();
     foItems = parseFoItems(template.zpl);
     clearTimeout(editorPreviewTimer);
     editorPreviewTimer = setTimeout(() => {
+      pushHistory(template.zpl);
       renderFields({ keepValues: true });
       lastPreviewKey = "";
       updateOutput();
@@ -1496,6 +1943,32 @@
       applySizeInputsToTemplate();
       lastPreviewKey = "";
       updateOutput();
+    });
+  });
+
+  if (printModeSelect) {
+    if (prefs.printMode) printModeSelect.value = prefs.printMode;
+    printModeSelect.addEventListener("change", () => {
+      prefs.printMode = printModeSelect.value;
+      savePrefs();
+      setActionButtonsEnabled(Boolean((zplCodeEl.textContent || "").trim()), hasPreviewImage);
+    });
+  }
+  if (printCopiesInput) {
+    if (prefs.printCopies) printCopiesInput.value = prefs.printCopies;
+    printCopiesInput.addEventListener("change", () => {
+      prefs.printCopies = getPrintCopies();
+      printCopiesInput.value = prefs.printCopies;
+      savePrefs();
+    });
+  }
+
+  [newFieldKeyInput, newFieldLabelInput].forEach((input) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addTextFieldToTemplate();
+      }
     });
   });
 
@@ -1539,11 +2012,20 @@
 
   copyBtn.addEventListener("click", copyZpl);
   downloadBtn.addEventListener("click", downloadZpl);
-  printBtn.addEventListener("click", printLabel);
+  printBtn.addEventListener("click", () => {
+    printLabel().catch((error) => showToast(error.message || "Print failed."));
+  });
   sendZebraBtn.addEventListener("click", sendToZebra);
   previewBtn.addEventListener("click", () => {
     lastPreviewKey = "";
     renderPreview(zplCodeEl.textContent || "", getTemplate());
+  });
+
+  previewEl.addEventListener("click", (event) => {
+    if (event.target === previewEl || event.target.id === "label-preview" || event.target.tagName === "IMG" || event.target.tagName === "P") {
+      selectedFoIndexes = [];
+      updateSelectionUi();
+    }
   });
 
   dragLayer.addEventListener("pointerdown", onDragStart);
@@ -1552,6 +2034,94 @@
   window.addEventListener("pointercancel", onDragEnd);
   window.addEventListener("resize", () => renderDragHandles());
 
+  window.addEventListener("beforeunload", (event) => {
+    if (!dirty) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  window.addEventListener("keydown", (event) => {
+    const tag = (event.target && event.target.tagName) || "";
+    const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target?.isContentEditable;
+    const mod = event.ctrlKey || event.metaKey;
+
+    if (mod && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      saveCurrentFile();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      printLabel().catch((error) => showToast(error.message || "Print failed."));
+      return;
+    }
+    if (mod && event.key.toLowerCase() === "z" && !event.shiftKey) {
+      if (!typing || event.target === templateEditor) {
+        event.preventDefault();
+        undo();
+      }
+      return;
+    }
+    if (mod && (event.key.toLowerCase() === "y" || (event.key.toLowerCase() === "z" && event.shiftKey))) {
+      if (!typing || event.target === templateEditor) {
+        event.preventDefault();
+        redo();
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      selectedFoIndexes = [];
+      updateSelectionUi();
+      toastEl.hidden = true;
+      return;
+    }
+    if (event.key === "F2") {
+      event.preventDefault();
+      renameSelected();
+      return;
+    }
+    if (typing) return;
+
+    const step = event.shiftKey ? 20 : 10;
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveSelected(0, -step);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveSelected(0, step);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveSelected(-step, 0);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveSelected(step, 0);
+    } else if ((event.key === "Delete" || event.key === "Backspace") && selectedFoIndexes.length === 1) {
+      const item = foItems[selectedFoIndexes[0]];
+      if (item?.label && confirm(`Remove field {{${item.label}}} from template?`)) {
+        removeFieldFromTemplate(item.label);
+      }
+    } else if (mod && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      setSelection(foItems.map((item) => item.index));
+      showToast(`Selected ${foItems.length} fields.`);
+    } else if (mod && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      duplicateSelectedField();
+    }
+  });
+
+  // Double-click rename in file list
+  fsListEl.addEventListener("dblclick", (event) => {
+    const btn = event.target.closest("[data-id]");
+    if (!btn) return;
+    selectedFsId = btn.dataset.id;
+    const node = getNode(selectedFsId);
+    if (node && node.type === "file") renameSelected();
+  });
+
   renderFileSystem();
   loadSelectedTemplateIntoUi();
+  updateHistoryButtons();
+  setDirty(false);
+  setStatus("Ready");
 })();
