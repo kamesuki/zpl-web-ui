@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZP Labels</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
   <header class="page-header">
     <h1>ZP Labels</h1>
-    <p>Fill label data on the left. Edit, move, scale, rotate, and layer fields in the template editor on the right.</p>
+    <p>Left: label data + preview. Right: template editing tools.</p>
   </header>
 
   <div class="workspace">
@@ -40,7 +40,7 @@
 
       <h2>Preview</h2>
       <p id="preview-size" class="note"></p>
-      <p class="note">Drag boxes to move. Ctrl/Cmd-click to multi-select for align tools.</p>
+      <p class="note">Click a field box to select it, then use the tools on the right. Ctrl/Cmd-click selects multiple.</p>
       <div id="preview-stage">
         <div id="label-preview">
           <p>Generate ZPL to preview the label.</p>
@@ -55,46 +55,48 @@
       </p>
     </main>
 
-    <aside class="editor-panel" aria-label="Template editor">
+    <aside class="editor-panel" id="editor-panel" aria-label="Template editor">
       <div class="editor-panel-head">
         <h2>Template editor</h2>
         <button type="button" id="reset-template-btn">Reset template</button>
       </div>
 
+      <p class="editor-hint"><strong>Editing tools</strong> — select a field first, then click a tool.</p>
+
       <div class="toolbar" role="toolbar" aria-label="Field tools">
-        <div class="tool-group" aria-label="Nudge">
-          <span class="tool-label">Move</span>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10" title="Nudge up">↑</button>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0" title="Nudge left">←</button>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0" title="Nudge right">→</button>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10" title="Nudge down">↓</button>
+        <div class="tool-group">
+          <div class="tool-label">Move</div>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10">Up</button>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0">Left</button>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0">Right</button>
+          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10">Down</button>
         </div>
 
-        <div class="tool-group" aria-label="Align">
-          <span class="tool-label">Align</span>
-          <button type="button" class="tool-btn" data-tool="align" data-align="left" title="Align left">⫷</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="center-x" title="Align center X">☰</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="right" title="Align right">⫸</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="top" title="Align top">⬆</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="center-y" title="Align middle Y">⬌</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="bottom" title="Align bottom">⬇</button>
+        <div class="tool-group">
+          <div class="tool-label">Align</div>
+          <button type="button" class="tool-btn" data-tool="align" data-align="left">Left</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="center-x">Center X</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="right">Right</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="top">Top</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="center-y">Middle Y</button>
+          <button type="button" class="tool-btn" data-tool="align" data-align="bottom">Bottom</button>
         </div>
 
-        <div class="tool-group" aria-label="Transform">
-          <span class="tool-label">Transform</span>
-          <button type="button" class="tool-btn" data-tool="scale" data-factor="1.15" title="Scale up">Scale +</button>
-          <button type="button" class="tool-btn" data-tool="scale" data-factor="0.87" title="Scale down">Scale −</button>
-          <button type="button" class="tool-btn" data-tool="rotate" title="Rotate 90°">Rotate</button>
-          <button type="button" class="tool-btn" data-tool="flip" data-axis="h" title="Flip horizontal">Flip H</button>
-          <button type="button" class="tool-btn" data-tool="flip" data-axis="v" title="Flip vertical">Flip V</button>
+        <div class="tool-group">
+          <div class="tool-label">Transform</div>
+          <button type="button" class="tool-btn" data-tool="scale" data-factor="1.15">Scale +</button>
+          <button type="button" class="tool-btn" data-tool="scale" data-factor="0.87">Scale -</button>
+          <button type="button" class="tool-btn" data-tool="rotate">Rotate 90</button>
+          <button type="button" class="tool-btn" data-tool="flip" data-axis="h">Flip H</button>
+          <button type="button" class="tool-btn" data-tool="flip" data-axis="v">Flip V</button>
         </div>
 
-        <div class="tool-group" aria-label="Order">
-          <span class="tool-label">Order</span>
-          <button type="button" class="tool-btn" data-tool="forward" title="Bring forward">Forward</button>
-          <button type="button" class="tool-btn" data-tool="backward" title="Send backward">Backward</button>
-          <button type="button" class="tool-btn" data-tool="front" title="Bring to front">To front</button>
-          <button type="button" class="tool-btn" data-tool="back" title="Send to back">To back</button>
+        <div class="tool-group">
+          <div class="tool-label">Order</div>
+          <button type="button" class="tool-btn" data-tool="forward">Forward</button>
+          <button type="button" class="tool-btn" data-tool="backward">Backward</button>
+          <button type="button" class="tool-btn" data-tool="front">To front</button>
+          <button type="button" class="tool-btn" data-tool="back">To back</button>
         </div>
       </div>
 
@@ -106,10 +108,10 @@
           <label>Size <input type="number" id="prop-size" step="1" min="1" /></label>
           <label>Rot
             <select id="prop-rot">
-              <option value="N">0° (N)</option>
-              <option value="R">90° (R)</option>
-              <option value="I">180° (I)</option>
-              <option value="B">270° (B)</option>
+              <option value="N">0 (N)</option>
+              <option value="R">90 (R)</option>
+              <option value="I">180 (I)</option>
+              <option value="B">270 (B)</option>
             </select>
           </label>
           <button type="button" id="apply-props-btn">Apply</button>
@@ -117,7 +119,7 @@
       </div>
 
       <div class="field-list-wrap">
-        <span class="tool-label">Fields</span>
+        <div class="tool-label">Fields</div>
         <div id="field-list" class="field-list"></div>
       </div>
 
@@ -135,6 +137,6 @@
 
   <p id="toast" hidden></p>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
