@@ -240,6 +240,119 @@ fieldset {
   gap: 6px;
 }
 
+.fs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.fs-toolbar button,
+.field-editor-row button,
+.field-meta-list button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.fs-path {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  padding: 4px 6px;
+  margin-bottom: 6px;
+  background: #eee;
+  border: 1px solid #bbb;
+}
+
+.fs-list {
+  border: 1px solid #999;
+  background: #fafafa;
+  min-height: 120px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.fs-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #e0e0e0;
+  background: transparent;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fs-item:hover {
+  background: #eef5ff;
+}
+
+.fs-item.is-selected {
+  background: #d0e4ff;
+}
+
+.fs-item .fs-icon {
+  width: 18px;
+  text-align: center;
+  font-family: Consolas, "Courier New", monospace;
+  font-weight: bold;
+}
+
+.fs-item.is-folder .fs-icon {
+  color: #a67c00;
+}
+
+.fs-item.is-file .fs-icon {
+  color: #333;
+}
+
+.field-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+
+.field-editor-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.field-editor-row input {
+  font: inherit;
+  width: 150px;
+  padding: 4px 6px;
+}
+
+.field-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.field-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  font-size: 12px;
+}
+
+.field-meta-row code {
+  font-family: Consolas, "Courier New", monospace;
+}
+
 #preview-stage {
   position: relative;
   display: inline-block;
