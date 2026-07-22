@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZP Labels</title>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
 </head>
 <body>
   <header class="topbar">
@@ -104,6 +104,8 @@
           <span id="selected-fo" class="selected-fo">No field selected</span>
           <label>X <input type="number" id="prop-x" step="1" /></label>
           <label>Y <input type="number" id="prop-y" step="1" /></label>
+          <label>W <input type="number" id="prop-w" step="1" min="20" title="Box width (dots)" /></label>
+          <label>H <input type="number" id="prop-h" step="1" min="10" title="Box height (dots)" /></label>
           <label>Sz <input type="number" id="prop-size" step="1" min="1" /></label>
           <label>Rot
             <select id="prop-rot">
@@ -115,6 +117,7 @@
           </label>
           <button type="button" id="apply-props-btn">Apply</button>
         </div>
+        <p class="hint">Drag edges/corner of a selected box to stretch text so it fits.</p>
 
         <div id="preview-stage">
           <div id="label-preview">
@@ -148,6 +151,6 @@
 
   <p id="toast" hidden></p>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
