@@ -1,31 +1,36 @@
 # ZP Labels
 
-Simple static form for generating ZPL from three editable templates:
+Static form + right-side template editor for ZPL labels.
 
-1. **Template 1**
-2. **Template 2**
-3. **Template 3**
+## Layout
 
-## Features
+- **Left:** template picker, label data, preview, generated ZPL, print actions
+- **Right:** contained **Template editor** with tools and raw ZPL
 
-- Fill label data from `{{PLACEHOLDERS}}` in the selected template
-- **Template editor** — edit ZPL (including `^FO` coordinates) directly
-- **Drag in preview** — grab a field box on the preview; `^FO` numbers update live in the editor
-- Print preview image, or send raw ZPL via Zebra Browser Print
-- Template edits are saved in the browser (`localStorage`)
+## Templates
+
+1. Template 1
+2. Template 2
+3. Template 3
+
+## Editor tools
+
+- Move / nudge, drag on preview
+- Align (left/center/right/top/middle/bottom)
+- Scale +, Scale −
+- Rotate 90°
+- Flip H / Flip V
+- Forward / Backward / To front / To back
+- X, Y, Size, Rotation properties
+- Multi-select with Ctrl/Cmd-click
+
+Edits sync into `^FO` / orientation / size commands and are saved in `localStorage`.
 
 ## Run
-
-Open `index.html`, or:
 
 ```bash
 python3 -m http.server 8080
 ```
-
-## Print
-
-- **Print label** — browser print dialog with the Labelary preview at label size
-- **Send to Zebra** — raw ZPL through [Zebra Browser Print](https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html) (must be running locally)
 
 ## GitHub Pages
 
