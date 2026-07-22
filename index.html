@@ -28,6 +28,8 @@
       <button type="button" id="clear-btn">Clear</button>
       <button type="button" id="copy-btn" disabled>Copy ZPL</button>
       <button type="button" id="download-btn" disabled>Download .zpl</button>
+      <button type="button" id="print-btn" disabled>Print label</button>
+      <button type="button" id="send-zebra-btn" disabled>Send to Zebra</button>
       <button type="button" id="preview-btn">Refresh preview</button>
     </p>
   </form>
@@ -40,6 +42,10 @@
   <div id="label-preview">
     <p>Generate ZPL to preview the label.</p>
   </div>
+  <p class="note">
+    Print label uses the preview image (browser print dialog).
+    Send to Zebra sends raw ZPL via Zebra Browser Print (must be running on this computer).
+  </p>
 
   <p id="toast" hidden></p>
 

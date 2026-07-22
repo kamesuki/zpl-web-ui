@@ -11,7 +11,6 @@
         { key: "CUSTOMER", label: "Customer" },
         { key: "QUANTITY", label: "Quantity" },
       ],
-      // Content goes to ~Y220 and X~300 — use a short label size so preview isn't padded.
       density: 8,
       widthIn: 2.5,
       heightIn: 1.5,
@@ -40,18 +39,24 @@
         { key: "LOT_SERIAL", label: "Lot / serial" },
         { key: "COMMENT", label: "Comment" },
       ],
-      // Content to ~Y740 and X~500+ — tall label, crop height closer to content.
       density: 8,
       widthIn: 4,
       heightIn: 4.5,
     },
   };
 
+  const BROWSER_PRINT_URLS = [
+    "http://127.0.0.1:9100",
+    "https://127.0.0.1:9101",
+  ];
+
   const form = document.getElementById("label-form");
   const fieldsEl = document.getElementById("fields");
   const zplCodeEl = document.querySelector("#zpl-output code");
   const copyBtn = document.getElementById("copy-btn");
   const downloadBtn = document.getElementById("download-btn");
+  const printBtn = document.getElementById("print-btn");
+  const sendZebraBtn = document.getElementById("send-zebra-btn");
   const clearBtn = document.getElementById("clear-btn");
   const previewBtn = document.getElementById("preview-btn");
   const previewEl = document.getElementById("label-preview");
@@ -61,6 +66,8 @@
   let toastTimer = null;
   let previewTimer = null;
   let lastPreviewKey = "";
+  let lastPreviewObjectUrl = "";
+  let hasPreviewImage = false;
 
   function getSelectedTemplateType() {
     const selected = form.querySelector('input[name="templateType"]:checked');
@@ -100,8 +107,25 @@
     return template.zpl.replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
   }
 
+  function setActionButtonsEnabled(hasZpl, hasImage) {
+    copyBtn.disabled = !hasZpl;
+    downloadBtn.disabled = !hasZpl;
+    sendZebraBtn.disabled = !hasZpl;
+    printBtn.disabled = !hasImage;
+  }
+
   function updatePreviewSizeNote(template) {
     previewSizeEl.textContent = `Labelary size: ${template.widthIn}" × ${template.heightIn}" @ ${template.density} dpmm`;
+    document.documentElement.style.setProperty("--print-width", `${template.widthIn}in`);
+    document.documentElement.style.setProperty("--print-height", `${template.heightIn}in`);
+  }
+
+  function clearPreviewObjectUrl() {
+    if (lastPreviewObjectUrl) {
+      URL.revokeObjectURL(lastPreviewObjectUrl);
+      lastPreviewObjectUrl = "";
+    }
+    hasPreviewImage = false;
   }
 
   function renderFields() {
@@ -140,9 +164,7 @@
     const template = getTemplate();
     const zpl = buildZpl(template, collectValues());
     zplCodeEl.textContent = zpl;
-    const hasContent = Boolean(zpl.trim());
-    copyBtn.disabled = !hasContent;
-    downloadBtn.disabled = !hasContent;
+    setActionButtonsEnabled(Boolean(zpl.trim()), hasPreviewImage);
 
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
@@ -156,7 +178,7 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toastEl.hidden = true;
-    }, 2000);
+    }, 2500);
   }
 
   async function copyZpl() {
@@ -188,11 +210,147 @@
     showToast("Downloaded " + filename);
   }
 
+  function printLabel() {
+    const img = previewEl.querySelector("img");
+    if (!img) {
+      showToast("Load a preview before printing.");
+      return;
+    }
+
+    const template = getTemplate();
+    updatePreviewSizeNote(template);
+
+    // Prefer a dedicated print window so only the label is printed.
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=640,height=480");
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const width = template.widthIn;
+    const height = template.heightIn;
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Print label</title>
+  <style>
+    @page { margin: 0; size: ${width}in ${height}in; }
+    html, body { margin: 0; padding: 0; }
+    img {
+      display: block;
+      width: ${width}in;
+      height: ${height}in;
+      object-fit: fill;
+    }
+  </style>
+</head>
+<body>
+  <img src="${img.src}" alt="Label" />
+</body>
+</html>`);
+    printWindow.document.close();
+
+    const doPrint = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+
+    const printImg = printWindow.document.querySelector("img");
+    if (printImg && !printImg.complete) {
+      printImg.onload = doPrint;
+      printImg.onerror = () => {
+        showToast("Could not load label image for printing.");
+        printWindow.close();
+      };
+    } else {
+      setTimeout(doPrint, 50);
+    }
+  }
+
+  async function fetchJson(url) {
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+
+  async function findBrowserPrintBase() {
+    for (const base of BROWSER_PRINT_URLS) {
+      try {
+        await fetchJson(`${base}/available`);
+        return base;
+      } catch {
+        // try next endpoint
+      }
+    }
+    return null;
+  }
+
+  function pickPrinter(available) {
+    const list = Array.isArray(available)
+      ? available
+      : available && Array.isArray(available.printer)
+        ? available.printer
+        : available && Array.isArray(available.device)
+          ? available.device
+          : [];
+
+    if (!list.length) return null;
+
+    return (
+      list.find((device) => String(device.connection || "").toLowerCase() === "usb") ||
+      list.find((device) => String(device.deviceType || device.type || "").toLowerCase() === "printer") ||
+      list[0]
+    );
+  }
+
+  async function sendToZebra() {
+    const zpl = zplCodeEl.textContent || "";
+    if (!zpl.trim()) return;
+
+    sendZebraBtn.disabled = true;
+    showToast("Looking for Zebra Browser Print…");
+
+    try {
+      const base = await findBrowserPrintBase();
+      if (!base) {
+        throw new Error(
+          "Zebra Browser Print not found. Start Browser Print, then try again — or use Print label / Download .zpl."
+        );
+      }
+
+      const available = await fetchJson(`${base}/available`);
+      const device = pickPrinter(available);
+      if (!device) {
+        throw new Error("No printer found in Zebra Browser Print.");
+      }
+
+      const response = await fetch(`${base}/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device, data: zpl }),
+      });
+
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(detail || `Send failed (HTTP ${response.status})`);
+      }
+
+      const name = device.name || device.uid || "printer";
+      showToast("Sent ZPL to " + name);
+    } catch (error) {
+      showToast(error.message || "Could not send to Zebra printer.");
+    } finally {
+      setActionButtonsEnabled(Boolean((zplCodeEl.textContent || "").trim()), hasPreviewImage);
+    }
+  }
+
   async function renderPreview(zpl, template) {
     const key = `${getSelectedTemplateType()}|${template.widthIn}x${template.heightIn}|${zpl}`;
     if (!zpl.trim()) {
+      clearPreviewObjectUrl();
       previewEl.innerHTML = "<p>Generate ZPL to preview the label.</p>";
       lastPreviewKey = "";
+      setActionButtonsEnabled(false, false);
       return;
     }
 
@@ -200,6 +358,7 @@
     lastPreviewKey = key;
     updatePreviewSizeNote(template);
     previewEl.innerHTML = "<p>Loading preview…</p>";
+    setActionButtonsEnabled(true, false);
 
     const endpoint = `https://api.labelary.com/v1/printers/${template.density}dpmm/labels/${template.widthIn}x${template.heightIn}/0/`;
 
@@ -218,18 +377,22 @@
       }
 
       const blob = await response.blob();
+      clearPreviewObjectUrl();
       const url = URL.createObjectURL(blob);
+      lastPreviewObjectUrl = url;
       previewEl.innerHTML = "";
       const img = document.createElement("img");
       img.alt = "Label preview";
       img.src = url;
-      // Keep DSS/stock previews readable without stretching tall Standard labels too wide.
       const maxCssWidth = template.heightIn >= 3 ? 360 : 420;
       img.style.width = `${Math.min(template.widthIn * 140, maxCssWidth)}px`;
-      img.onload = () => URL.revokeObjectURL(url);
       previewEl.appendChild(img);
+      hasPreviewImage = true;
+      setActionButtonsEnabled(true, true);
     } catch {
+      clearPreviewObjectUrl();
       previewEl.innerHTML = "<p>Preview unavailable (Labelary request failed). ZPL is still ready.</p>";
+      setActionButtonsEnabled(true, false);
     }
   }
 
@@ -260,13 +423,17 @@
       input.value = "";
     });
     lastPreviewKey = "";
+    clearPreviewObjectUrl();
     updateOutput();
     previewEl.innerHTML = "<p>Generate ZPL to preview the label.</p>";
+    setActionButtonsEnabled(Boolean((zplCodeEl.textContent || "").trim()), false);
     showToast("Cleared.");
   });
 
   copyBtn.addEventListener("click", copyZpl);
   downloadBtn.addEventListener("click", downloadZpl);
+  printBtn.addEventListener("click", printLabel);
+  sendZebraBtn.addEventListener("click", sendToZebra);
   previewBtn.addEventListener("click", () => {
     lastPreviewKey = "";
     renderPreview(zplCodeEl.textContent || "", getTemplate());
