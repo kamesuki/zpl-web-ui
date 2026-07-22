@@ -58,6 +58,8 @@
   const labelDensityInput = document.getElementById("label-density");
   const propX = document.getElementById("prop-x");
   const propY = document.getElementById("prop-y");
+  const propW = document.getElementById("prop-w");
+  const propH = document.getElementById("prop-h");
   const propSize = document.getElementById("prop-size");
   const propRot = document.getElementById("prop-rot");
   const applyPropsBtn = document.getElementById("apply-props-btn");
@@ -600,17 +602,37 @@
       const bcMatch = block.match(/\^BC([NRIB])\s*,\s*(\d+)/i);
       const aMatch = block.match(/\^A[0-9A-Z@]*([NRIB])/i);
       const fwMatch = block.match(/\^FW([NRIB])/i);
+      const fbMatch = block.match(/\^FB(\d+)\s*,\s*(\d+)(?:\s*,\s*([^,\^]*))?(?:\s*,\s*([^,\^]*))?(?:\s*,\s*([^,\^]*))?/i);
+      const byMatch = block.match(/\^BY(\d+)/i);
       let orientation = "N";
       let size = null;
+      let fontWidth = null;
+      const isBarcode = Boolean(bcMatch);
       if (bcMatch) {
         orientation = bcMatch[1].toUpperCase();
         size = Number(bcMatch[2]);
       } else if (cfMatch) {
         size = Number(cfMatch[1]);
+        if (cfMatch[2]) fontWidth = Number(cfMatch[2]);
         if (aMatch) orientation = aMatch[1].toUpperCase();
         else if (fwMatch) orientation = fwMatch[1].toUpperCase();
       } else if (aMatch) orientation = aMatch[1].toUpperCase();
       else if (fwMatch) orientation = fwMatch[1].toUpperCase();
+
+      const fbWidth = fbMatch ? Number(fbMatch[1]) : null;
+      const fbLines = fbMatch ? Number(fbMatch[2]) : null;
+      const fontH = size || 28;
+      let boxW;
+      let boxH;
+      if (isBarcode) {
+        const module = byMatch ? Number(byMatch[1]) : 2;
+        boxW = fbWidth || Math.max(140, module * 40 + 40);
+        boxH = Math.max(30, fontH + 30);
+      } else {
+        boxW = fbWidth || Math.max(100, Math.round((fontWidth || fontH * 0.6) * 10));
+        const lines = fbLines || 1;
+        boxH = Math.max(fontH + 8, lines * (fontH + 4));
+      }
 
       items.push({
         index: items.length,
@@ -618,7 +640,13 @@
         x: Number(xToken),
         y: Number(yToken),
         size,
+        fontWidth,
         orientation,
+        isBarcode,
+        fbWidth,
+        fbLines,
+        boxW,
+        boxH,
         xAbsStart: foStart + xStartInMatch,
         xAbsEnd: foStart + xStartInMatch + xToken.length,
         yAbsStart: foStart + yStartInMatch,
@@ -673,13 +701,17 @@
       selectedFoEl.textContent = "No field selected";
       propX.value = "";
       propY.value = "";
+      propW.value = "";
+      propH.value = "";
       propSize.value = "";
       propRot.value = "N";
     } else {
       const extra = selectedFoIndexes.length > 1 ? ` (+${selectedFoIndexes.length - 1})` : "";
-      selectedFoEl.textContent = `${item.label}  ^FO${item.x},${item.y}${item.size != null ? `  sz=${item.size}` : ""}${extra}`;
+      selectedFoEl.textContent = `${item.label}  ^FO${item.x},${item.y}  ${item.boxW}x${item.boxH}${extra}`;
       propX.value = item.x;
       propY.value = item.y;
+      propW.value = item.boxW;
+      propH.value = item.boxH;
       propSize.value = item.size != null ? item.size : "";
       propRot.value = ORIENT.includes(item.orientation) ? item.orientation : "N";
       templateEditor.setSelectionRange(item.xAbsStart, item.yAbsEnd);
@@ -711,6 +743,39 @@
 
   function rewriteBlock(zpl, item, newBlock) {
     return zpl.slice(0, item.blockStart) + newBlock + zpl.slice(item.blockEnd);
+  }
+
+  function setTextFieldBox(block, width, height, fontSize) {
+    const w = Math.max(20, Math.round(width));
+    const fontH = Math.max(8, Math.round(fontSize || 28));
+    const lines = Math.max(1, Math.round(height / Math.max(12, fontH + 4)));
+    let next = block;
+    if (/\^FB\d+/i.test(next)) {
+      next = next.replace(/\^FB\d+\s*,\s*\d+/i, `^FB${w},${lines}`);
+    } else {
+      // Place field block after FO so text wraps inside the stretched box.
+      next = next.replace(/(\^FO[^^]*)/i, `$1^FB${w},${lines},0,L,0`);
+    }
+    return next;
+  }
+
+  function setBarcodeFieldBox(block, width, height) {
+    const h = Math.max(10, Math.round(height));
+    let next = block;
+    if (/\^BC[NRIB]\s*,\s*\d+/i.test(next)) {
+      next = next.replace(/(\^BC[NRIB]\s*,\s*)\d+/i, `$1${h}`);
+    }
+    // Widen barcode modules roughly with box width.
+    if (/\^BY\d+/i.test(next)) {
+      const modules = Math.max(1, Math.min(10, Math.round(width / 60)));
+      next = next.replace(/\^BY\d+/i, `^BY${modules}`);
+    }
+    return next;
+  }
+
+  function applyBoxSizeToBlock(item, width, height) {
+    if (item.isBarcode) return setBarcodeFieldBox(item.block, width, height);
+    return setTextFieldBox(item.block, width, height, item.size || 28);
   }
 
   function cycleOrient(current, steps = 1) {
@@ -879,6 +944,13 @@
       let block = current.block;
       if (propSize.value !== "") block = setBlockSize(block, propSize.value);
       block = setBlockOrientation(block, propRot.value || "N");
+      const bw = Number(propW.value);
+      const bh = Number(propH.value);
+      if (Number.isFinite(bw) && Number.isFinite(bh)) {
+        // Re-parse block size fields after size/orient edits.
+        const tempItem = { ...current, block, size: Number(propSize.value) || current.size };
+        block = applyBoxSizeToBlock(tempItem, bw, bh);
+      }
       zpl = rewriteBlock(zpl, current, block);
     }
     commitZpl(zpl);
@@ -1121,22 +1193,43 @@
     dragLayer.innerHTML = foItems
       .map((item) => {
         const selected = selectedFoIndexes.includes(item.index) ? " is-selected" : "";
-        return `<div class="fo-handle${selected}" data-fo-index="${item.index}" style="left:${item.x * metrics.scaleX}px;top:${item.y * metrics.scaleY}px;" title="${escapeHtml(item.label)}">
-          <span>${escapeHtml(item.label)}</span>
-          <span class="fo-coords">^FO${item.x},${item.y}</span>
+        const left = item.x * metrics.scaleX;
+        const top = item.y * metrics.scaleY;
+        const width = Math.max(16, item.boxW * metrics.scaleX);
+        const height = Math.max(14, item.boxH * metrics.scaleY);
+        const grips = selected
+          ? `<span class="fo-resize fo-resize-e" data-resize="e" title="Stretch width"></span>
+             <span class="fo-resize fo-resize-s" data-resize="s" title="Stretch height"></span>
+             <span class="fo-resize fo-resize-se" data-resize="se" title="Stretch box"></span>`
+          : "";
+        return `<div class="fo-handle${selected}" data-fo-index="${item.index}" style="left:${left}px;top:${top}px;width:${width}px;height:${height}px;" title="${escapeHtml(item.label)} — drag to move, stretch edges to fit text">
+          <span class="fo-label">${escapeHtml(item.label)}</span>
+          <span class="fo-coords">^FO${item.x},${item.y} ${item.boxW}x${item.boxH}</span>
+          ${grips}
         </div>`;
       })
       .join("");
   }
 
-  function updateHandlePosition(index, x, y) {
+  function updateHandleBox(index, x, y, w, h) {
     const metrics = getPreviewMetrics();
     const handle = dragLayer.querySelector(`[data-fo-index="${index}"]`);
     if (!metrics || !handle) return;
     handle.style.left = `${x * metrics.scaleX}px`;
     handle.style.top = `${y * metrics.scaleY}px`;
+    if (w != null) handle.style.width = `${Math.max(16, w * metrics.scaleX)}px`;
+    if (h != null) handle.style.height = `${Math.max(14, h * metrics.scaleY)}px`;
     const coords = handle.querySelector(".fo-coords");
-    if (coords) coords.textContent = `^FO${Math.round(x)},${Math.round(y)}`;
+    if (coords) {
+      const ww = w != null ? Math.round(w) : "";
+      const hh = h != null ? Math.round(h) : "";
+      coords.textContent =
+        w != null && h != null ? `^FO${Math.round(x)},${Math.round(y)} ${ww}x${hh}` : `^FO${Math.round(x)},${Math.round(y)}`;
+    }
+  }
+
+  function updateHandlePosition(index, x, y) {
+    updateHandleBox(index, x, y, null, null);
   }
 
   async function renderPreview(zpl, template) {
@@ -1192,6 +1285,7 @@
   }
 
   function onDragStart(event) {
+    const resizeEl = event.target.closest("[data-resize]");
     const handle = event.target.closest(".fo-handle");
     if (!handle) return;
     event.preventDefault();
@@ -1203,8 +1297,26 @@
     foItems = parseFoItems(baseZpl);
     const item = foItems[index];
     if (!item) return;
+
+    if (resizeEl) {
+      handle.classList.add("is-resizing", "is-selected");
+      dragState = {
+        mode: "resize",
+        resize: resizeEl.dataset.resize,
+        index,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        originW: item.boxW,
+        originH: item.boxH,
+        itemSnapshot: item,
+        baseZpl,
+      };
+      return;
+    }
+
     handle.classList.add("is-dragging", "is-selected");
     dragState = {
+      mode: "move",
       index,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -1224,6 +1336,28 @@
     if (!metrics) return;
     const dxDots = (event.clientX - dragState.startClientX) / metrics.scaleX;
     const dyDots = (event.clientY - dragState.startClientY) / metrics.scaleY;
+
+    if (dragState.mode === "resize") {
+      let newW = dragState.originW;
+      let newH = dragState.originH;
+      if (dragState.resize === "e" || dragState.resize === "se") newW = Math.max(20, Math.round(dragState.originW + dxDots));
+      if (dragState.resize === "s" || dragState.resize === "se") newH = Math.max(10, Math.round(dragState.originH + dyDots));
+      updateHandleBox(dragState.index, dragState.itemSnapshot.x, dragState.itemSnapshot.y, newW, newH);
+      propW.value = newW;
+      propH.value = newH;
+      selectedFoEl.textContent = `${dragState.itemSnapshot.label}  ${newW}x${newH}`;
+
+      const block = applyBoxSizeToBlock(dragState.itemSnapshot, newW, newH);
+      const liveZpl = rewriteBlock(dragState.baseZpl, dragState.itemSnapshot, block);
+      suppressEditorInput = true;
+      templateEditor.value = liveZpl;
+      suppressEditorInput = false;
+      dragState.liveZpl = liveZpl;
+      dragState.currentW = newW;
+      dragState.currentH = newH;
+      return;
+    }
+
     let liveZpl = dragState.baseZpl;
     const ordered = [...dragState.selectedSnapshot].sort((a, b) => b.index - a.index);
     for (const snap of ordered) {
@@ -1245,16 +1379,17 @@
 
   function onDragEnd() {
     if (!dragState) return;
-    const { liveZpl, index } = dragState;
+    const { liveZpl, index, mode } = dragState;
+    const wasResize = mode === "resize";
     dragState = null;
     const handle = dragLayer.querySelector(`[data-fo-index="${index}"]`);
-    if (handle) handle.classList.remove("is-dragging");
+    if (handle) handle.classList.remove("is-dragging", "is-resizing");
     if (!liveZpl) {
       renderDragHandles();
       return;
     }
     commitZpl(liveZpl);
-    showToast("Moved field(s).");
+    showToast(wasResize ? "Stretched text box." : "Moved field(s).");
   }
 
   // File system events
