@@ -1,26 +1,19 @@
-# ZP Labels — ZPL Template Builder
+# ZP Labels
 
-A small static website for filling ZP label fields and generating ZPL from the three templates used in your Apps Script:
+Simple static form for generating ZPL from three templates:
 
-1. **DSS** — part, description, barcode, PO, WO/SO + customer, quantity  
-2. **DSS Stock** (`Generate DSS Stock Label`) — part, description, barcode only  
-3. **Standard** — full warehouse label (PO, location, qty, WO/SO, lot/serial, comment)
+1. **DSS**
+2. **DSS Stock** (`Generate DSS Stock Label`)
+3. **Standard**
 
-## Features
+## Run
 
-- Template switcher with fields that match each layout
-- Live ZPL generation as you type
-- Copy to clipboard and download `.zpl`
-- Optional visual preview via [Labelary](http://labelary.com/)
-
-## Run locally
-
-Open `index.html` in a browser, or serve the folder:
+Open `index.html`, or:
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Then visit `http://localhost:8080`.
+## GitHub Pages
 
-No build step or dependencies required.
+Settings → Pages → Deploy from branch → `main` / `(root)`
