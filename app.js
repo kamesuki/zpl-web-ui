@@ -424,21 +424,15 @@
     if (!next || !next.trim()) return;
     let name = next.trim();
     if (node.type === "file" && !/\.zpl$/i.test(name)) name += ".zpl";
-    node.name = ensureUniqueName(node.parentId, name);
-    // ensureUniqueName may return same if only self conflicts — strip self first
+
     const parent = getNode(node.parentId);
-    const names = new Set(
+    const taken = new Set(
       (parent.children || []).filter((id) => id !== node.id).map((id) => getNode(id)?.name)
     );
-    if (names.has(node.name)) node.name = ensureUniqueName(node.parentId, name.replace(/\.zpl$/i, "") + " x.zpl");
-    else {
-      // re-check simply
-      let candidate = name;
-      if (names.has(candidate)) {
-        candidate = ensureUniqueName(node.parentId, name);
-      }
-      node.name = candidate;
+    if (taken.has(name)) {
+      name = ensureUniqueName(node.parentId, name);
     }
+    node.name = name;
     saveStore();
     renderFileSystem();
     showToast("Renamed to " + node.name);
