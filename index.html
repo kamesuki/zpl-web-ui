@@ -4,30 +4,43 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZP Labels</title>
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <h1>ZP Labels</h1>
-      <span id="open-file-name" class="open-file">No file</span>
+      <span id="open-file-name" class="open-file" title="Open template">No file</span>
+      <span id="dirty-flag" hidden title="Unsaved changes">*</span>
+      <span id="save-status" class="hint" aria-live="polite"></span>
     </div>
-    <form id="label-form" class="top-actions">
-      <button type="submit">Generate</button>
-      <button type="button" id="clear-btn">Clear</button>
-      <button type="button" id="copy-btn" disabled>Copy</button>
-      <button type="button" id="download-btn" disabled>Download</button>
+    <form id="label-form" class="top-actions" autocomplete="off">
+      <button type="submit" title="Generate ZPL and refresh preview (Enter)">Generate</button>
+      <button type="button" id="clear-btn" title="Clear field values">Clear</button>
+      <button type="button" id="undo-btn" title="Undo (Ctrl+Z)" disabled>Undo</button>
+      <button type="button" id="redo-btn" title="Redo (Ctrl+Y)" disabled>Redo</button>
+      <button type="button" id="copy-btn" disabled title="Copy generated ZPL">Copy</button>
+      <button type="button" id="download-btn" disabled title="Download generated .zpl">Download</button>
       <label class="inline-label">Print
-        <select id="print-mode" name="printMode">
+        <select id="print-mode" name="printMode" title="Print scaling mode">
           <option value="fit" selected>Fit to page</option>
           <option value="actual">Actual size</option>
         </select>
       </label>
-      <button type="button" id="print-btn" disabled>Print</button>
-      <button type="button" id="send-zebra-btn" disabled>Zebra</button>
-      <button type="button" id="preview-btn">Refresh</button>
+      <label class="inline-label">Copies
+        <input type="number" id="print-copies" min="1" max="99" value="1" title="Number of copies" />
+      </label>
+      <button type="button" id="print-btn" disabled title="Print label (Ctrl+P)">Print</button>
+      <button type="button" id="send-zebra-btn" disabled title="Send raw ZPL to Zebra Browser Print">Zebra</button>
+      <button type="button" id="preview-btn" title="Refresh Labelary preview">Refresh</button>
+      <button type="button" id="export-btn" title="Export all templates as JSON">Export</button>
+      <button type="button" id="import-btn" title="Import templates JSON">Import</button>
+      <input type="file" id="import-file" accept="application/json,.json" hidden />
+      <button type="button" id="help-btn" title="Keyboard shortcuts">Help</button>
     </form>
   </header>
+
+  <p id="status-bar" class="hint" role="status" aria-live="polite"></p>
 
   <div class="workspace">
     <section class="col col-files" aria-label="Templates and fields">
@@ -35,17 +48,18 @@
         <div class="panel-head">
           <strong>Templates</strong>
           <div class="fs-toolbar">
-            <button type="button" id="fs-up-btn" title="Up">Up</button>
+            <button type="button" id="fs-up-btn" title="Go up one folder">Up</button>
             <button type="button" id="fs-new-folder-btn" title="New folder">Folder</button>
             <button type="button" id="fs-new-file-btn" title="New template">New</button>
-            <button type="button" id="fs-save-btn">Save</button>
-            <button type="button" id="fs-save-as-btn">Save As</button>
-            <button type="button" id="fs-rename-btn">Rename</button>
-            <button type="button" id="fs-delete-btn">Del</button>
+            <button type="button" id="fs-save-btn" title="Save (Ctrl+S)">Save</button>
+            <button type="button" id="fs-save-as-btn" title="Save As">Save As</button>
+            <button type="button" id="fs-rename-btn" title="Rename selected (F2)">Rename</button>
+            <button type="button" id="fs-delete-btn" title="Delete selected">Del</button>
+            <button type="button" id="fs-duplicate-btn" title="Duplicate open template">Dup</button>
           </div>
         </div>
         <div id="fs-path" class="fs-path">Templates/</div>
-        <div id="fs-list" class="fs-list" role="listbox" aria-label="Template files"></div>
+        <div id="fs-list" class="fs-list" role="listbox" aria-label="Template files" tabindex="0"></div>
       </div>
 
       <div class="panel grow">
@@ -54,9 +68,9 @@
           <span class="hint">values + add/remove</span>
         </div>
         <div class="add-field-row">
-          <input type="text" id="new-field-key" placeholder="KEY" />
-          <input type="text" id="new-field-label" placeholder="Label" />
-          <button type="button" id="add-field-btn">Add</button>
+          <input type="text" id="new-field-key" placeholder="KEY" title="Field key (A-Z, 0-9, _)" autocomplete="off" />
+          <input type="text" id="new-field-label" placeholder="Label" title="Display label" autocomplete="off" />
+          <button type="button" id="add-field-btn" title="Add text field (Enter)">Add</button>
         </div>
         <div id="fields" class="fields-dense"></div>
         <div id="field-meta-list" hidden></div>
@@ -68,14 +82,15 @@
         <div class="panel-head">
           <strong>Preview</strong>
           <span id="preview-size" class="hint"></span>
+          <span id="preview-status" class="hint" aria-live="polite"></span>
         </div>
 
         <div class="toolbar" role="toolbar" aria-label="Field tools">
           <div class="tool-group">
-            <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10" title="Up">↑</button>
-            <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0" title="Left">←</button>
-            <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0" title="Right">→</button>
-            <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10" title="Down">↓</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10" title="Up (↑)">↑</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0" title="Left (←)">←</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0" title="Right (→)">→</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10" title="Down (↓)">↓</button>
           </div>
           <div class="tool-group">
             <button type="button" class="tool-btn" data-tool="align" data-align="left" title="Align left">L</button>
@@ -97,16 +112,17 @@
             <button type="button" class="tool-btn" data-tool="backward" title="Backward">Back</button>
             <button type="button" class="tool-btn" data-tool="front" title="To front">Front</button>
             <button type="button" class="tool-btn" data-tool="back" title="To back">Bottom</button>
+            <button type="button" class="tool-btn" data-tool="duplicate-field" title="Duplicate selected field">DupFld</button>
           </div>
         </div>
 
         <div class="props">
           <span id="selected-fo" class="selected-fo">No field selected</span>
-          <label>X <input type="number" id="prop-x" step="1" /></label>
-          <label>Y <input type="number" id="prop-y" step="1" /></label>
-          <label>W <input type="number" id="prop-w" step="1" min="20" title="Box width (dots)" /></label>
-          <label>H <input type="number" id="prop-h" step="1" min="10" title="Box height (dots)" /></label>
-          <label>Sz <input type="number" id="prop-size" step="1" min="1" /></label>
+          <label>X <input type="number" id="prop-x" step="1" inputmode="numeric" /></label>
+          <label>Y <input type="number" id="prop-y" step="1" inputmode="numeric" /></label>
+          <label>W <input type="number" id="prop-w" step="1" min="20" title="Box width (dots)" inputmode="numeric" /></label>
+          <label>H <input type="number" id="prop-h" step="1" min="10" title="Box height (dots)" inputmode="numeric" /></label>
+          <label>Sz <input type="number" id="prop-size" step="1" min="1" inputmode="numeric" /></label>
           <label>Rot
             <select id="prop-rot">
               <option value="N">0</option>
@@ -116,8 +132,9 @@
             </select>
           </label>
           <button type="button" id="apply-props-btn">Apply</button>
+          <button type="button" id="clamp-btn" title="Clamp selected fields inside label">Clamp</button>
         </div>
-        <p class="hint">Drag edges/corner of a selected box to stretch text so it fits.</p>
+        <p class="hint">Drag edges/corner to stretch text. Arrows nudge. Esc clears selection. Ctrl+P prints label.</p>
 
         <div id="preview-stage">
           <div id="label-preview">
@@ -133,24 +150,32 @@
       <div class="panel grow">
         <div class="panel-head">
           <strong>Template ZPL</strong>
+          <button type="button" id="normalize-zpl-btn" title="Ensure ^XA/^XZ and trim junk">Fix ZPL</button>
           <button type="button" id="reset-template-btn">Reset</button>
         </div>
         <p class="size-row">
-          <label>W <input type="number" id="label-width" min="0.5" step="0.25" /></label>
-          <label>H <input type="number" id="label-height" min="0.5" step="0.25" /></label>
-          <label>dpmm <input type="number" id="label-density" min="6" max="24" step="1" /></label>
+          <label>W <input type="number" id="label-width" min="0.5" max="20" step="0.25" /></label>
+          <label>H <input type="number" id="label-height" min="0.5" max="20" step="0.25" /></label>
+          <label>dpmm <input type="number" id="label-density" min="6" max="24" step="1" list="dpmm-presets" /></label>
+          <datalist id="dpmm-presets">
+            <option value="6"></option>
+            <option value="8"></option>
+            <option value="12"></option>
+            <option value="24"></option>
+          </datalist>
         </p>
-        <textarea id="template-editor" spellcheck="false" rows="10"></textarea>
+        <textarea id="template-editor" spellcheck="false" rows="10" aria-label="Template ZPL source"></textarea>
         <div class="panel-head sub">
           <strong>Output</strong>
+          <button type="button" id="copy-output-btn" title="Copy output ZPL">Copy out</button>
         </div>
-        <pre id="zpl-output"><code></code></pre>
+        <pre id="zpl-output" tabindex="0"><code></code></pre>
       </div>
     </section>
   </div>
 
-  <p id="toast" hidden></p>
+  <p id="toast" hidden role="status" aria-live="polite"></p>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
