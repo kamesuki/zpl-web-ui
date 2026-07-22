@@ -83,3 +83,35 @@ fieldset {
   margin-top: 12px;
   color: #060;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #label-preview,
+  #label-preview * {
+    visibility: visible;
+  }
+
+  #label-preview {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: none;
+    padding: 0;
+    background: #fff;
+  }
+
+  #label-preview img {
+    border: none;
+    width: var(--print-width, 2.5in) !important;
+    height: var(--print-height, 1.5in) !important;
+    max-width: none;
+    object-fit: fill;
+  }
+
+  #label-preview p {
+    display: none;
+  }
+}
