@@ -79,6 +79,8 @@
   const fsPathEl = document.getElementById("fs-path");
   const newFieldKeyInput = document.getElementById("new-field-key");
   const newFieldLabelInput = document.getElementById("new-field-label");
+  const openFileNameEl = document.getElementById("open-file-name");
+  const printModeSelect = document.getElementById("print-mode");
 
   let store = loadStore();
   let toastTimer = null;
@@ -327,6 +329,11 @@
     showToast("Opened " + node.name);
   }
 
+  function updateOpenFileLabel() {
+    const file = getOpenFile();
+    openFileNameEl.textContent = file ? file.name : "No file";
+  }
+
   function openFolder(folderId) {
     const node = getNode(folderId);
     if (!node || node.type !== "folder") return;
@@ -509,7 +516,6 @@
     newFieldLabelInput.value = "";
     saveStore();
     commitZpl(zpl, { refreshPreview: true, keepSelection: false });
-    renderFieldMetaList();
     showToast(`Added text field {{${key}}}`);
   }
 
@@ -533,7 +539,6 @@
     file.zpl = zpl;
     saveStore();
     commitZpl(zpl, { refreshPreview: true, keepSelection: false });
-    renderFieldMetaList();
     showToast(`Removed {{${key}}}`);
   }
 
@@ -547,31 +552,10 @@
     file.fieldLabels[key] = next.trim();
     saveStore();
     renderFields({ keepValues: true });
-    renderFieldMetaList();
   }
 
   function renderFieldMetaList() {
-    const file = getOpenFile();
-    if (!file) {
-      fieldMetaListEl.innerHTML = "";
-      return;
-    }
-    const keys = extractPlaceholders(file.zpl);
-    if (!keys.length) {
-      fieldMetaListEl.innerHTML = `<p class="note">No fields yet. Add one above.</p>`;
-      return;
-    }
-    fieldMetaListEl.innerHTML = keys
-      .map((key) => {
-        const label = humanizeKey(key, file);
-        return `<div class="field-meta-row">
-          <code>{{${escapeHtml(key)}}}</code>
-          <span>${escapeHtml(label)}</span>
-          <button type="button" data-field-action="rename" data-key="${escapeHtml(key)}">Edit label</button>
-          <button type="button" data-field-action="remove" data-key="${escapeHtml(key)}">Remove</button>
-        </div>`;
-      })
-      .join("");
+    // Field manage actions live inline in the Fields panel now.
   }
 
   function findBlockStart(text, foStart, prevEnd) {
@@ -668,7 +652,6 @@
     }
     updateSelectionUi();
     renderFields({ keepValues: true });
-    renderFieldMetaList();
     if (refreshPreview) {
       lastPreviewKey = "";
       updateOutput();
@@ -687,14 +670,14 @@
   function updateSelectionUi() {
     const item = primarySelected();
     if (!item) {
-      selectedFoEl.textContent = "No field selected.";
+      selectedFoEl.textContent = "No field selected";
       propX.value = "";
       propY.value = "";
       propSize.value = "";
       propRot.value = "N";
     } else {
-      const extra = selectedFoIndexes.length > 1 ? ` (+${selectedFoIndexes.length - 1} more)` : "";
-      selectedFoEl.textContent = `Selected: ${item.label}  ^FO${item.x},${item.y}  rot=${item.orientation}${item.size != null ? `  size=${item.size}` : ""}${extra}`;
+      const extra = selectedFoIndexes.length > 1 ? ` (+${selectedFoIndexes.length - 1})` : "";
+      selectedFoEl.textContent = `${item.label}  ^FO${item.x},${item.y}${item.size != null ? `  sz=${item.size}` : ""}${extra}`;
       propX.value = item.x;
       propY.value = item.y;
       propSize.value = item.size != null ? item.size : "";
@@ -907,7 +890,7 @@
     const previous = keepValues ? collectValues() : {};
     const keys = extractPlaceholders(template.zpl);
     if (!keys.length) {
-      fieldsEl.innerHTML = "<p class='note'>No {{PLACEHOLDERS}} found. Use Field editor to add text inputs.</p>";
+      fieldsEl.innerHTML = "<p class='hint'>No fields yet. Add a KEY above.</p>";
       return;
     }
     fieldsEl.innerHTML = keys
@@ -917,10 +900,17 @@
         const value = previous[key] ?? "";
         const required = key === "PART_NUMBER" || key === "BARCODE_VALUE" ? " required" : "";
         const multiline = key === "DESCRIPTION" || key === "COMMENT";
-        if (multiline) {
-          return `<p><label for="${id}">${escapeHtml(label)}</label><textarea id="${id}" name="${key}" data-field="${key}"${required}>${escapeHtml(value)}</textarea></p>`;
-        }
-        return `<p><label for="${id}">${escapeHtml(label)}</label><input id="${id}" name="${key}" data-field="${key}" type="text" value="${escapeHtml(value)}"${required} /></p>`;
+        const input = multiline
+          ? `<textarea id="${id}" name="${key}" data-field="${key}"${required}>${escapeHtml(value)}</textarea>`
+          : `<input id="${id}" name="${key}" data-field="${key}" type="text" value="${escapeHtml(value)}"${required} />`;
+        return `<div class="field-row">
+          <label for="${id}" title="{{${escapeHtml(key)}}}">${escapeHtml(label)}</label>
+          ${input}
+          <div class="field-row-actions">
+            <button type="button" data-field-action="rename" data-key="${escapeHtml(key)}" title="Edit label">Lbl</button>
+            <button type="button" data-field-action="remove" data-key="${escapeHtml(key)}" title="Remove field">Del</button>
+          </div>
+        </div>`;
       })
       .join("");
   }
@@ -941,11 +931,11 @@
     templateEditor.value = template.zpl;
     suppressEditorInput = false;
     updateSizeInputsFromTemplate(template);
+    updateOpenFileLabel();
     foItems = parseFoItems(template.zpl);
     selectedFoIndexes = [];
     updateSelectionUi();
     renderFields({ keepValues: true });
-    renderFieldMetaList();
     lastPreviewKey = "";
     updateOutput();
   }
@@ -997,8 +987,7 @@
   }
 
   function getPrintMode() {
-    const selected = form.querySelector('input[name="printMode"]:checked');
-    return selected ? selected.value : "fit";
+    return printModeSelect?.value || "fit";
   }
 
   function printLabel() {
@@ -1243,7 +1232,7 @@
       updateHandlePosition(snap.index, nx, ny);
       liveZpl = replaceFoCoordinates(liveZpl, snap.item, nx, ny);
       if (snap.index === dragState.index) {
-        selectedFoEl.textContent = `Selected: ${snap.item.label}  ^FO${nx},${ny}`;
+        selectedFoEl.textContent = `${snap.item.label}  ^FO${nx},${ny}`;
         propX.value = nx;
         propY.value = ny;
       }
@@ -1308,6 +1297,13 @@
   document.getElementById("fs-delete-btn").addEventListener("click", deleteSelected);
   document.getElementById("add-field-btn").addEventListener("click", addTextFieldToTemplate);
 
+  fieldsEl.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-field-action]");
+    if (!btn) return;
+    if (btn.dataset.fieldAction === "remove") removeFieldFromTemplate(btn.dataset.key);
+    if (btn.dataset.fieldAction === "rename") renameFieldLabel(btn.dataset.key);
+  });
+
   fieldMetaListEl.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-field-action]");
     if (!btn) return;
@@ -1348,7 +1344,6 @@
     clearTimeout(editorPreviewTimer);
     editorPreviewTimer = setTimeout(() => {
       renderFields({ keepValues: true });
-      renderFieldMetaList();
       lastPreviewKey = "";
       updateOutput();
     }, 400);

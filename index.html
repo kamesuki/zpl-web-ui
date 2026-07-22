@@ -4,166 +4,150 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZP Labels</title>
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body>
-  <header class="page-header">
-    <h1>ZP Labels</h1>
-    <p>Left: templates, fields, preview. Right: editing tools.</p>
+  <header class="topbar">
+    <div class="brand">
+      <h1>ZP Labels</h1>
+      <span id="open-file-name" class="open-file">No file</span>
+    </div>
+    <form id="label-form" class="top-actions">
+      <button type="submit">Generate</button>
+      <button type="button" id="clear-btn">Clear</button>
+      <button type="button" id="copy-btn" disabled>Copy</button>
+      <button type="button" id="download-btn" disabled>Download</button>
+      <label class="inline-label">Print
+        <select id="print-mode" name="printMode">
+          <option value="fit" selected>Fit to page</option>
+          <option value="actual">Actual size</option>
+        </select>
+      </label>
+      <button type="button" id="print-btn" disabled>Print</button>
+      <button type="button" id="send-zebra-btn" disabled>Zebra</button>
+      <button type="button" id="preview-btn">Refresh</button>
+    </form>
   </header>
 
   <div class="workspace">
-    <main class="left-pane">
-      <form id="label-form">
-        <fieldset class="fs-box">
-          <legend>Templates</legend>
+    <section class="col col-files" aria-label="Templates and fields">
+      <div class="panel">
+        <div class="panel-head">
+          <strong>Templates</strong>
           <div class="fs-toolbar">
-            <button type="button" id="fs-up-btn" title="Go up">Up</button>
-            <button type="button" id="fs-new-folder-btn">New folder</button>
-            <button type="button" id="fs-new-file-btn">New template</button>
+            <button type="button" id="fs-up-btn" title="Up">Up</button>
+            <button type="button" id="fs-new-folder-btn" title="New folder">Folder</button>
+            <button type="button" id="fs-new-file-btn" title="New template">New</button>
             <button type="button" id="fs-save-btn">Save</button>
             <button type="button" id="fs-save-as-btn">Save As</button>
             <button type="button" id="fs-rename-btn">Rename</button>
-            <button type="button" id="fs-delete-btn">Delete</button>
+            <button type="button" id="fs-delete-btn">Del</button>
           </div>
-          <div id="fs-path" class="fs-path">Templates/</div>
-          <div id="fs-list" class="fs-list" role="listbox" aria-label="Template files"></div>
-          <p class="note">Open a .zpl file to edit. Changes save in this browser.</p>
-        </fieldset>
-
-        <fieldset>
-          <legend>Field editor</legend>
-          <p class="note">Add a new text input field to the open template.</p>
-          <p class="field-editor-row">
-            <label>Key <input type="text" id="new-field-key" placeholder="CUSTOM_TEXT" /></label>
-            <label>Label <input type="text" id="new-field-label" placeholder="Custom text" /></label>
-            <button type="button" id="add-field-btn">Add text field</button>
-          </p>
-          <div id="field-meta-list" class="field-meta-list"></div>
-        </fieldset>
-
-        <fieldset>
-          <legend>Label data</legend>
-          <div id="fields"></div>
-        </fieldset>
-
-        <p class="actions">
-          <button type="submit">Generate ZPL</button>
-          <button type="button" id="clear-btn">Clear data</button>
-          <button type="button" id="copy-btn" disabled>Copy ZPL</button>
-          <button type="button" id="download-btn" disabled>Download .zpl</button>
-          <button type="button" id="print-btn" disabled>Print label</button>
-          <button type="button" id="send-zebra-btn" disabled>Send to Zebra</button>
-          <button type="button" id="preview-btn">Refresh preview</button>
-        </p>
-
-        <fieldset>
-          <legend>Print options</legend>
-          <label><input type="radio" name="printMode" value="fit" checked /> Fit to page (best for large labels)</label><br />
-          <label><input type="radio" name="printMode" value="actual" /> Actual label size</label>
-          <p class="note">Fit to page scales the preview to the paper in the print dialog.</p>
-        </fieldset>
-      </form>
-
-      <h2>Preview</h2>
-      <p id="preview-size" class="note"></p>
-      <p class="note">Click a field box to select it, then use the tools on the right. Ctrl/Cmd-click selects multiple.</p>
-      <div id="preview-stage">
-        <div id="label-preview">
-          <p>Generate ZPL to preview the label.</p>
         </div>
-        <div id="drag-layer" hidden></div>
+        <div id="fs-path" class="fs-path">Templates/</div>
+        <div id="fs-list" class="fs-list" role="listbox" aria-label="Template files"></div>
       </div>
 
-      <h2>Generated ZPL</h2>
-      <pre id="zpl-output"><code></code></pre>
-      <p class="note">
-        Print label uses the preview image. Send to Zebra needs Browser Print running locally.
-      </p>
-    </main>
-
-    <aside class="editor-panel" id="editor-panel" aria-label="Template editor">
-      <div class="editor-panel-head">
-        <h2>Template editor</h2>
-        <button type="button" id="reset-template-btn">Reset file</button>
+      <div class="panel grow">
+        <div class="panel-head">
+          <strong>Fields</strong>
+          <span class="hint">values + add/remove</span>
+        </div>
+        <div class="add-field-row">
+          <input type="text" id="new-field-key" placeholder="KEY" />
+          <input type="text" id="new-field-label" placeholder="Label" />
+          <button type="button" id="add-field-btn">Add</button>
+        </div>
+        <div id="fields" class="fields-dense"></div>
+        <div id="field-meta-list" hidden></div>
       </div>
+    </section>
 
-      <p class="editor-hint"><strong>Editing tools</strong> — select a field first, then click a tool.</p>
-
-      <div class="toolbar" role="toolbar" aria-label="Field tools">
-        <div class="tool-group">
-          <div class="tool-label">Move</div>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10">Up</button>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0">Left</button>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0">Right</button>
-          <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10">Down</button>
+    <section class="col col-preview" aria-label="Preview and tools">
+      <div class="panel">
+        <div class="panel-head">
+          <strong>Preview</strong>
+          <span id="preview-size" class="hint"></span>
         </div>
 
-        <div class="tool-group">
-          <div class="tool-label">Align</div>
-          <button type="button" class="tool-btn" data-tool="align" data-align="left">Left</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="center-x">Center X</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="right">Right</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="top">Top</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="center-y">Middle Y</button>
-          <button type="button" class="tool-btn" data-tool="align" data-align="bottom">Bottom</button>
+        <div class="toolbar" role="toolbar" aria-label="Field tools">
+          <div class="tool-group">
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="-10" title="Up">↑</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="-10" data-dy="0" title="Left">←</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="10" data-dy="0" title="Right">→</button>
+            <button type="button" class="tool-btn" data-tool="nudge" data-dx="0" data-dy="10" title="Down">↓</button>
+          </div>
+          <div class="tool-group">
+            <button type="button" class="tool-btn" data-tool="align" data-align="left" title="Align left">L</button>
+            <button type="button" class="tool-btn" data-tool="align" data-align="center-x" title="Center X">CX</button>
+            <button type="button" class="tool-btn" data-tool="align" data-align="right" title="Align right">R</button>
+            <button type="button" class="tool-btn" data-tool="align" data-align="top" title="Align top">T</button>
+            <button type="button" class="tool-btn" data-tool="align" data-align="center-y" title="Middle Y">CY</button>
+            <button type="button" class="tool-btn" data-tool="align" data-align="bottom" title="Align bottom">B</button>
+          </div>
+          <div class="tool-group">
+            <button type="button" class="tool-btn" data-tool="scale" data-factor="1.15" title="Scale up">+</button>
+            <button type="button" class="tool-btn" data-tool="scale" data-factor="0.87" title="Scale down">−</button>
+            <button type="button" class="tool-btn" data-tool="rotate" title="Rotate 90">Rot</button>
+            <button type="button" class="tool-btn" data-tool="flip" data-axis="h" title="Flip H">FlipH</button>
+            <button type="button" class="tool-btn" data-tool="flip" data-axis="v" title="Flip V">FlipV</button>
+          </div>
+          <div class="tool-group">
+            <button type="button" class="tool-btn" data-tool="forward" title="Forward">Fwd</button>
+            <button type="button" class="tool-btn" data-tool="backward" title="Backward">Back</button>
+            <button type="button" class="tool-btn" data-tool="front" title="To front">Front</button>
+            <button type="button" class="tool-btn" data-tool="back" title="To back">Bottom</button>
+          </div>
         </div>
 
-        <div class="tool-group">
-          <div class="tool-label">Transform</div>
-          <button type="button" class="tool-btn" data-tool="scale" data-factor="1.15">Scale +</button>
-          <button type="button" class="tool-btn" data-tool="scale" data-factor="0.87">Scale -</button>
-          <button type="button" class="tool-btn" data-tool="rotate">Rotate 90</button>
-          <button type="button" class="tool-btn" data-tool="flip" data-axis="h">Flip H</button>
-          <button type="button" class="tool-btn" data-tool="flip" data-axis="v">Flip V</button>
-        </div>
-
-        <div class="tool-group">
-          <div class="tool-label">Order</div>
-          <button type="button" class="tool-btn" data-tool="forward">Forward</button>
-          <button type="button" class="tool-btn" data-tool="backward">Backward</button>
-          <button type="button" class="tool-btn" data-tool="front">To front</button>
-          <button type="button" class="tool-btn" data-tool="back">To back</button>
-        </div>
-      </div>
-
-      <div class="props">
-        <p class="note" id="selected-fo">No field selected.</p>
-        <p>
+        <div class="props">
+          <span id="selected-fo" class="selected-fo">No field selected</span>
           <label>X <input type="number" id="prop-x" step="1" /></label>
           <label>Y <input type="number" id="prop-y" step="1" /></label>
-          <label>Size <input type="number" id="prop-size" step="1" min="1" /></label>
+          <label>Sz <input type="number" id="prop-size" step="1" min="1" /></label>
           <label>Rot
             <select id="prop-rot">
-              <option value="N">0 (N)</option>
-              <option value="R">90 (R)</option>
-              <option value="I">180 (I)</option>
-              <option value="B">270 (B)</option>
+              <option value="N">0</option>
+              <option value="R">90</option>
+              <option value="I">180</option>
+              <option value="B">270</option>
             </select>
           </label>
           <button type="button" id="apply-props-btn">Apply</button>
+        </div>
+
+        <div id="preview-stage">
+          <div id="label-preview">
+            <p>Generate to preview.</p>
+          </div>
+          <div id="drag-layer" hidden></div>
+        </div>
+        <div id="field-list" class="field-list" title="Click to select layout field"></div>
+      </div>
+    </section>
+
+    <section class="col col-code" aria-label="Template code">
+      <div class="panel grow">
+        <div class="panel-head">
+          <strong>Template ZPL</strong>
+          <button type="button" id="reset-template-btn">Reset</button>
+        </div>
+        <p class="size-row">
+          <label>W <input type="number" id="label-width" min="0.5" step="0.25" /></label>
+          <label>H <input type="number" id="label-height" min="0.5" step="0.25" /></label>
+          <label>dpmm <input type="number" id="label-density" min="6" max="24" step="1" /></label>
         </p>
+        <textarea id="template-editor" spellcheck="false" rows="10"></textarea>
+        <div class="panel-head sub">
+          <strong>Output</strong>
+        </div>
+        <pre id="zpl-output"><code></code></pre>
       </div>
-
-      <div class="field-list-wrap">
-        <div class="tool-label">Layout fields</div>
-        <div id="field-list" class="field-list"></div>
-      </div>
-
-      <label class="tool-label" for="template-editor">Template ZPL</label>
-      <textarea id="template-editor" spellcheck="false" rows="12"></textarea>
-
-      <p class="size-row">
-        Label size (inches):
-        <label>W <input type="number" id="label-width" min="0.5" step="0.25" /></label>
-        <label>H <input type="number" id="label-height" min="0.5" step="0.25" /></label>
-        <label>dpmm <input type="number" id="label-density" min="6" max="24" step="1" /></label>
-      </p>
-    </aside>
+    </section>
   </div>
 
   <p id="toast" hidden></p>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
